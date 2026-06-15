@@ -12,18 +12,18 @@ option(seil_build_benchmarks "Build the seil benchmark executable" OFF)
 option(seil_enable_ceres "Build the Ceres CPU backend" OFF)
 option(seil_enable_cuda "Build the cold-snapshot CUDA backend" OFF)
 
-add_library(seil INTERFACE)
+add_library(seil STATIC src/geometry.cpp)
 add_library(seil::seil ALIAS seil)
 
-target_compile_features(seil INTERFACE cxx_std_23)
+target_compile_features(seil PUBLIC cxx_std_23)
 target_include_directories(seil
-  INTERFACE
+  PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
 target_compile_options(seil
-  INTERFACE
+  PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4;/permissive->
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall;-Wextra;-Wpedantic>
 )
@@ -32,6 +32,10 @@ if(BUILD_TESTING)
   add_executable(seil_error_tests tests/error_tests.cpp)
   target_link_libraries(seil_error_tests PRIVATE seil::seil)
   add_test(NAME seil_error_tests COMMAND seil_error_tests)
+
+  add_executable(seil_geometry_tests tests/geometry_tests.cpp)
+  target_link_libraries(seil_geometry_tests PRIVATE seil::seil)
+  add_test(NAME seil_geometry_tests COMMAND seil_geometry_tests)
 endif()
 
 set(seil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/seil")
