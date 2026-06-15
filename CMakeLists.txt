@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.25)
 
 project(seil VERSION 0.1.0 LANGUAGES CXX)
 
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 include(CTest)
 include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
@@ -26,12 +28,20 @@ target_compile_options(seil
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall;-Wextra;-Wpedantic>
 )
 
+if(BUILD_TESTING)
+  add_executable(seil_error_tests tests/error_tests.cpp)
+  target_link_libraries(seil_error_tests PRIVATE seil::seil)
+  add_test(NAME seil_error_tests COMMAND seil_error_tests)
+endif()
+
 set(seil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/seil")
 
 install(TARGETS seil
   EXPORT seil_targets
   INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
+
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 install(EXPORT seil_targets
   FILE seilTargets.cmake
