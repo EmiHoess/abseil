@@ -10,11 +10,28 @@
 
 namespace seil::detail {
 
-struct prepared_storage {
-  problem value;
-  std::vector<std::int32_t> active_index;
+struct graph_component {
+  bool has_active{};
+  bool has_constant{};
+};
+
+struct sparse_candidate {
+  std::int32_t row{};
+  std::int32_t column{};
+};
+
+struct topology_index {
+  std::vector<std::int32_t> active_node;
+  std::vector<std::size_t> component_of_node;
+  std::vector<graph_component> components;
+  std::vector<sparse_candidate> sparse_candidates;
   std::size_t active_count{};
   std::size_t unanchored_components{};
+};
+
+struct prepared_storage {
+  problem value;
+  topology_index topology;
   std::string hash;
 };
 

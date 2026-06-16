@@ -76,7 +76,7 @@ operation_result<prepared_problem> prepare(problem value)
   problem& input = storage->value;
 
   std::unordered_set<std::uint64_t> node_ids;
-  storage->active_index.assign(input.nodes.size(), -1);
+  storage->topology.active_node.assign(input.nodes.size(), -1);
   for(std::size_t index = 0; index < input.nodes.size(); ++index) {
     node& current = input.nodes[index];
     if(!node_ids.insert(current.id).second)
@@ -85,8 +85,9 @@ operation_result<prepared_problem> prepare(problem value)
       return std::unexpected(preparation_error("pose graph contains a non-finite pose"));
     current.initial.yaw = wrap_yaw(current.initial.yaw);
     if(!current.constant) {
-      storage->active_index[index] = static_cast<std::int32_t>(storage->active_count);
-      ++storage->active_count;
+      storage->topology.active_node[index] =
+        static_cast<std::int32_t>(storage->topology.active_count);
+      ++storage->topology.active_count;
     }
   }
 
@@ -202,18 +203,42 @@ operation_result<prepared_problem> prepare(problem value)
   for(const registration_group& group : input.registration_groups)
     connect(adjacency, group.node_i, group.node_j);
 
+  std::set<std::pair<std::int32_t, std::int32_t>> candidate_pairs;
+  for(std::size_t index = 0; index < storage->topology.active_count; ++index) {
+    const auto active = static_cast<std::int32_t>(index);
+    candidate_pairs.emplace(active, active);
+  }
+  const auto add_candidate = [&](std::size_t left, std::size_t right) {
+    const std::int32_t row = storage->topology.active_node[left];
+    const std::int32_t column = storage->topology.active_node[right];
+    if(row >= 0 && column >= 0)
+      candidate_pairs.emplace(std::min(row, column), std::max(row, column));
+  };
+  for(const relative_factor& factor : input.relative_factors)
+    add_candidate(factor.node_i, factor.node_j);
+  for(const absolute_factor& factor : input.absolute_factors)
+    add_candidate(factor.reference_node, factor.measured_node);
+  for(const registration_group& group : input.registration_groups)
+    add_candidate(group.node_i, group.node_j);
+  storage->topology.sparse_candidates.reserve(candidate_pairs.size());
+  for(const auto& [row, column] : candidate_pairs)
+    storage->topology.sparse_candidates.push_back({row, column});
+
   std::vector<bool> visited(input.nodes.size());
+  storage->topology.component_of_node.resize(input.nodes.size());
   for(std::size_t start = 0; start < input.nodes.size(); ++start) {
     if(visited[start])
       continue;
     bool has_active = false;
     bool has_constant = false;
+    const std::size_t component_index = storage->topology.components.size();
     std::queue<std::size_t> pending;
     pending.push(start);
     visited[start] = true;
     while(!pending.empty()) {
       const std::size_t current = pending.front();
       pending.pop();
+      storage->topology.component_of_node[current] = component_index;
       has_active = has_active || !input.nodes[current].constant;
       has_constant = has_constant || input.nodes[current].constant;
       for(const std::size_t next : adjacency[current]) {
@@ -223,8 +248,9 @@ operation_result<prepared_problem> prepare(problem value)
         }
       }
     }
+    storage->topology.components.push_back({has_active, has_constant});
     if(has_active && !has_constant)
-      ++storage->unanchored_components;
+      ++storage->topology.unanchored_components;
   }
 
   return detail::prepared_problem_access::make(std::move(storage));
