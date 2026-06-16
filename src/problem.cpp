@@ -1,15 +1,75 @@
 #include "internal.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
+#include <iomanip>
 #include <queue>
 #include <set>
+#include <sstream>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
 
 namespace seil {
 namespace {
+
+class snapshot_hash {
+public:
+  void add_u64(std::uint64_t value) noexcept
+  {
+    for(unsigned shift = 0; shift < 64; shift += 8) {
+      value_ ^= static_cast<std::uint8_t>(value >> shift);
+      value_ *= 1099511628211ULL;
+    }
+  }
+
+  void add_u32(std::uint32_t value) noexcept
+  {
+    for(unsigned shift = 0; shift < 32; shift += 8) {
+      value_ ^= static_cast<std::uint8_t>(value >> shift);
+      value_ *= 1099511628211ULL;
+    }
+  }
+
+  void add_size(std::size_t value) noexcept
+  {
+    add_u64(static_cast<std::uint64_t>(value));
+  }
+
+  void add_bool(bool value) noexcept
+  {
+    add_u32(value ? 1U : 0U);
+  }
+
+  void add_double(double value) noexcept
+  {
+    add_u64(std::bit_cast<std::uint64_t>(value));
+  }
+
+  void add_float(float value) noexcept
+  {
+    add_u32(std::bit_cast<std::uint32_t>(value));
+  }
+
+  void add_pose(const pose4& value) noexcept
+  {
+    add_double(value.x);
+    add_double(value.y);
+    add_double(value.z);
+    add_double(value.yaw);
+  }
+
+  std::string text() const
+  {
+    std::ostringstream output;
+    output << std::hex << std::setfill('0') << std::setw(16) << value_;
+    return output.str();
+  }
+
+private:
+  std::uint64_t value_{1469598103934665603ULL};
+};
 
 operation_error preparation_error(std::string message)
 {
@@ -44,6 +104,32 @@ void connect(
   adjacency[right].push_back(left);
 }
 
+}
+
+bool prepared_problem::empty() const noexcept
+{
+  return !storage_ || storage_->value.nodes.empty();
+}
+
+std::size_t prepared_problem::node_count() const noexcept
+{
+  return storage_ ? storage_->value.nodes.size() : 0U;
+}
+
+std::size_t prepared_problem::active_node_count() const noexcept
+{
+  return storage_ ? storage_->topology.active_count : 0U;
+}
+
+bool prepared_problem::has_unanchored_components() const noexcept
+{
+  return storage_ && storage_->topology.unanchored_components != 0;
+}
+
+const std::string& prepared_problem::hash() const noexcept
+{
+  static const std::string empty_hash;
+  return storage_ ? storage_->hash : empty_hash;
 }
 
 prepared_problem::prepared_problem(
@@ -252,6 +338,105 @@ operation_result<prepared_problem> prepare(problem value)
     if(has_active && !has_constant)
       ++storage->topology.unanchored_components;
   }
+
+  snapshot_hash hash;
+  hash.add_size(input.nodes.size());
+  for(const node& current : input.nodes) {
+    hash.add_u64(current.id);
+    hash.add_pose(current.initial);
+    hash.add_bool(current.constant);
+  }
+
+  hash.add_size(input.relative_factors.size());
+  for(const relative_factor& factor : input.relative_factors) {
+    hash.add_size(factor.node_i);
+    hash.add_size(factor.node_j);
+    hash.add_pose(factor.measured);
+    for(const double item : factor.sqrt_information)
+      hash.add_double(item);
+    hash.add_u32(static_cast<std::uint32_t>(factor.robust_loss.kind));
+    hash.add_double(factor.robust_loss.scale);
+    hash.add_u64(factor.diagnostic_id);
+  }
+
+  hash.add_size(input.absolute_factors.size());
+  for(const absolute_factor& factor : input.absolute_factors) {
+    hash.add_size(factor.reference_node);
+    hash.add_size(factor.measured_node);
+    hash.add_pose(factor.measured_relative);
+    for(const double item : factor.sqrt_information)
+      hash.add_double(item);
+    hash.add_u32(static_cast<std::uint32_t>(factor.robust_loss.kind));
+    hash.add_double(factor.robust_loss.scale);
+    hash.add_u64(factor.diagnostic_id);
+  }
+
+  hash.add_size(input.registration_groups.size());
+  for(const registration_group& group : input.registration_groups) {
+    hash.add_size(group.node_i);
+    hash.add_size(group.node_j);
+    hash.add_size(group.volume_i);
+    hash.add_size(group.volume_j);
+    hash.add_u32(static_cast<std::uint32_t>(group.field));
+    hash.add_size(group.sample_begin);
+    hash.add_size(group.sample_count);
+    hash.add_double(group.direction_weight);
+    hash.add_u64(group.diagnostic_id);
+  }
+
+  hash.add_size(input.registration_samples.size());
+  for(const registration_sample& sample : input.registration_samples) {
+    hash.add_size(sample.group);
+    hash.add_double(sample.reference_local_point.x);
+    hash.add_double(sample.reference_local_point.y);
+    hash.add_double(sample.reference_local_point.z);
+    hash.add_double(sample.reference_distance);
+    hash.add_double(sample.reference_tsdf_weight);
+    hash.add_u64(sample.ordinal);
+  }
+
+  hash.add_size(input.volumes.size());
+  for(const field_volume& volume : input.volumes) {
+    hash.add_size(volume.pose_node);
+    hash.add_double(volume.voxel_size);
+    hash.add_bool(volume.has_tsdf);
+    hash.add_bool(volume.has_esdf);
+  }
+
+  hash.add_size(input.tsdf_tiles.size());
+  for(const tsdf_tile& tile : input.tsdf_tiles) {
+    hash.add_size(tile.volume);
+    hash.add_u32(static_cast<std::uint32_t>(tile.x));
+    hash.add_u32(static_cast<std::uint32_t>(tile.y));
+    hash.add_u32(static_cast<std::uint32_t>(tile.z));
+    for(const tsdf_voxel& voxel : tile.voxels) {
+      hash.add_float(voxel.distance);
+      hash.add_float(voxel.weight);
+      hash.add_u32(voxel.flags);
+    }
+  }
+
+  hash.add_size(input.esdf_tiles.size());
+  for(const esdf_tile& tile : input.esdf_tiles) {
+    hash.add_size(tile.volume);
+    hash.add_u32(static_cast<std::uint32_t>(tile.x));
+    hash.add_u32(static_cast<std::uint32_t>(tile.y));
+    hash.add_u32(static_cast<std::uint32_t>(tile.z));
+    for(const esdf_voxel& voxel : tile.voxels) {
+      hash.add_float(voxel.distance);
+      hash.add_u32(voxel.flags);
+    }
+  }
+
+  hash.add_u32(static_cast<std::uint32_t>(input.registration.profile));
+  hash.add_u32(static_cast<std::uint32_t>(input.registration.robust_loss.kind));
+  hash.add_double(input.registration.robust_loss.scale);
+  hash.add_double(input.registration.minimum_tsdf_weight);
+  hash.add_double(input.registration.maximum_confidence_weight);
+  hash.add_double(input.registration.minimum_gradient_norm);
+  hash.add_double(input.registration.maximum_absolute_residual_m);
+  hash.add_bool(input.registration.allow_nearest_fallback);
+  storage->hash = hash.text();
 
   return detail::prepared_problem_access::make(std::move(storage));
 }

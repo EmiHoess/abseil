@@ -2,6 +2,19 @@
 
 #include <type_traits>
 
+namespace {
+
+seil::problem anchored_problem(double x)
+{
+  seil::problem value;
+  value.nodes.push_back({1, {0.0, 0.0, 0.0, 0.0}, true});
+  value.nodes.push_back({2, {x, 0.0, 0.0, 0.0}, false});
+  value.relative_factors.push_back({0, 1, {1.0, 0.0, 0.0, 0.0}});
+  return value;
+}
+
+}
+
 int main()
 {
   using namespace seil;
@@ -40,6 +53,26 @@ int main()
   duplicate.nodes.push_back(node{9, {}, false});
   if(prepare(std::move(duplicate)))
     return 7;
+
+  operation_result<prepared_problem> first = prepare(anchored_problem(1.0));
+  operation_result<prepared_problem> repeated = prepare(anchored_problem(1.0));
+  operation_result<prepared_problem> changed = prepare(anchored_problem(2.0));
+  if(!first || !repeated || !changed)
+    return 8;
+  if(first->empty() || first->node_count() != 2 || first->active_node_count() != 1)
+    return 9;
+  if(first->has_unanchored_components())
+    return 10;
+  if(first->hash().empty() || first->hash() != repeated->hash())
+    return 11;
+  if(first->hash() == changed->hash())
+    return 12;
+
+  problem unanchored;
+  unanchored.nodes.push_back({3, {}, false});
+  operation_result<prepared_problem> disconnected = prepare(std::move(unanchored));
+  if(!disconnected || !disconnected->has_unanchored_components())
+    return 13;
 
   return 0;
 }
