@@ -26,5 +26,20 @@ int main()
   if(value.nodes.front().id != 7)
     return 4;
 
+  operation_result<prepared_problem> prepared = prepare(std::move(value));
+  if(!prepared)
+    return 5;
+
+  problem empty;
+  operation_result<prepared_problem> empty_result = prepare(std::move(empty));
+  if(empty_result || empty_result.error().stage != operation_stage::preparation)
+    return 6;
+
+  problem duplicate;
+  duplicate.nodes.push_back(node{9, {}, true});
+  duplicate.nodes.push_back(node{9, {}, false});
+  if(prepare(std::move(duplicate)))
+    return 7;
+
   return 0;
 }
