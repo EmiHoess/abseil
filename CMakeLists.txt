@@ -36,6 +36,10 @@ if(BUILD_TESTING)
   add_executable(seil_geometry_tests tests/geometry_tests.cpp)
   target_link_libraries(seil_geometry_tests PRIVATE seil::seil)
   add_test(NAME seil_geometry_tests COMMAND seil_geometry_tests)
+
+  add_executable(seil_problem_tests tests/problem_tests.cpp)
+  target_link_libraries(seil_problem_tests PRIVATE seil::seil)
+  add_test(NAME seil_problem_tests COMMAND seil_problem_tests)
 endif()
 
 set(seil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/seil")
