@@ -13,6 +13,7 @@ option(seil_enable_ceres "Build the Ceres CPU backend" OFF)
 option(seil_enable_cuda "Build the cold-snapshot CUDA backend" OFF)
 
 add_library(seil STATIC
+  src/field.cpp
   src/geometry.cpp
   src/problem.cpp
 )
@@ -43,6 +44,10 @@ if(BUILD_TESTING)
   add_executable(seil_problem_tests tests/problem_tests.cpp)
   target_link_libraries(seil_problem_tests PRIVATE seil::seil)
   add_test(NAME seil_problem_tests COMMAND seil_problem_tests)
+
+  add_executable(seil_field_tests tests/field_tests.cpp)
+  target_link_libraries(seil_field_tests PRIVATE seil::seil)
+  add_test(NAME seil_field_tests COMMAND seil_field_tests)
 endif()
 
 set(seil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/seil")
