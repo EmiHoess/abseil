@@ -67,4 +67,7 @@ struct prepared_problem_access {
   static const prepared_storage* get(const prepared_problem& value) noexcept;
 };
 
+double robust_cost(const loss& robust_loss, double residual) noexcept;
+double robust_weight(const loss& robust_loss, double residual) noexcept;
+
 }

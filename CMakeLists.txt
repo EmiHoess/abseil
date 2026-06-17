@@ -15,6 +15,7 @@ option(seil_enable_cuda "Build the cold-snapshot CUDA backend" OFF)
 add_library(seil STATIC
   src/field.cpp
   src/geometry.cpp
+  src/objective.cpp
   src/problem.cpp
 )
 add_library(seil::seil ALIAS seil)
@@ -48,6 +49,10 @@ if(BUILD_TESTING)
   add_executable(seil_field_tests tests/field_tests.cpp)
   target_link_libraries(seil_field_tests PRIVATE seil::seil)
   add_test(NAME seil_field_tests COMMAND seil_field_tests)
+
+  add_executable(seil_objective_tests tests/objective_tests.cpp)
+  target_link_libraries(seil_objective_tests PRIVATE seil::seil)
+  add_test(NAME seil_objective_tests COMMAND seil_objective_tests)
 endif()
 
 set(seil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/seil")
