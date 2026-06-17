@@ -33,6 +33,14 @@ seil::prepared_problem field_problem()
       }
   value.tsdf_tiles.push_back(tsdf);
   value.esdf_tiles.push_back(esdf);
+  tsdf.x = -1;
+  esdf.x = -1;
+  for(auto& voxel : tsdf.voxels)
+    voxel.distance += 100.0F;
+  for(auto& voxel : esdf.voxels)
+    voxel.distance += 100.0F;
+  value.tsdf_tiles.push_back(tsdf);
+  value.esdf_tiles.push_back(esdf);
   auto prepared = seil::prepare(std::move(value));
   require(prepared.has_value(), "field problem preparation");
   return std::move(*prepared);
@@ -61,6 +69,11 @@ int main()
   require(std::abs(linear->sample.distance - 20.0) < 1.0e-12,
     "trilinear distance");
   require(linear->gradient_valid, "trilinear gradient exists");
+
+  auto negative = seil::query_field(problem, seil::field_kind::esdf, 0,
+    {-0.2, 2.2, 2.2}, seil::field_interpolation::nearest, false);
+  require(negative.has_value(), "negative tile sample exists");
+  require(negative->sample.distance > 100.0, "negative tile selected");
 
   auto boundary = seil::query_field(problem, seil::field_kind::esdf, 0,
     {0.0, 0.0, 0.0}, seil::field_interpolation::trilinear);

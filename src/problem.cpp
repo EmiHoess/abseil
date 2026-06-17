@@ -254,6 +254,19 @@ operation_result<prepared_problem> prepare(problem value)
       return std::unexpected(preparation_error("ESDF tile key is duplicated"));
   }
 
+  storage->tsdf_index.reserve(input.tsdf_tiles.size());
+  for(std::size_t index = 0; index < input.tsdf_tiles.size(); ++index) {
+    const auto& tile = input.tsdf_tiles[index];
+    storage->tsdf_index.emplace(
+      detail::tile_key{tile.volume, tile.x, tile.y, tile.z}, index);
+  }
+  storage->esdf_index.reserve(input.esdf_tiles.size());
+  for(std::size_t index = 0; index < input.esdf_tiles.size(); ++index) {
+    const auto& tile = input.esdf_tiles[index];
+    storage->esdf_index.emplace(
+      detail::tile_key{tile.volume, tile.x, tile.y, tile.z}, index);
+  }
+
   for(std::size_t group_index = 0;
       group_index < input.registration_groups.size(); ++group_index) {
     const registration_group& group = input.registration_groups[group_index];

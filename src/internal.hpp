@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace seil::detail {
@@ -20,6 +21,30 @@ struct sparse_candidate {
   std::int32_t column{};
 };
 
+struct tile_key {
+  std::size_t volume{};
+  std::int32_t x{};
+  std::int32_t y{};
+  std::int32_t z{};
+
+  friend bool operator==(const tile_key&, const tile_key&) = default;
+};
+
+struct tile_key_hash {
+  std::size_t operator()(const tile_key& key) const noexcept
+  {
+    std::size_t value = key.volume + 0x9e3779b9U;
+    const auto combine = [&value](std::uint32_t item) {
+      value ^= static_cast<std::size_t>(item) + 0x9e3779b9U +
+        (value << 6U) + (value >> 2U);
+    };
+    combine(static_cast<std::uint32_t>(key.x));
+    combine(static_cast<std::uint32_t>(key.y));
+    combine(static_cast<std::uint32_t>(key.z));
+    return value;
+  }
+};
+
 struct topology_index {
   std::vector<std::int32_t> active_node;
   std::vector<std::size_t> component_of_node;
@@ -32,6 +57,8 @@ struct topology_index {
 struct prepared_storage {
   problem value;
   topology_index topology;
+  std::unordered_map<tile_key, std::size_t, tile_key_hash> tsdf_index;
+  std::unordered_map<tile_key, std::size_t, tile_key_hash> esdf_index;
   std::string hash;
 };
 

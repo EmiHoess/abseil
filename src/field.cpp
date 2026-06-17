@@ -38,31 +38,26 @@ bool lookup(
     8U * (static_cast<std::size_t>(floor_modulo(y, 8)) +
     8U * static_cast<std::size_t>(floor_modulo(z, 8)));
 
+  const detail::tile_key key{volume, tile_x, tile_y, tile_z};
   if(field == field_kind::tsdf) {
-    for(const auto& tile : storage.value.tsdf_tiles) {
-      if(tile.volume != volume || tile.x != tile_x ||
-        tile.y != tile_y || tile.z != tile_z)
-        continue;
-      const auto& voxel = tile.voxels[local];
-      if((voxel.flags & 1U) == 0U || !(voxel.weight > 0.0F) ||
-        !std::isfinite(voxel.distance) || !std::isfinite(voxel.weight))
-        return false;
-      output = {voxel.distance, voxel.weight};
-      return true;
-    }
-  } else {
-    for(const auto& tile : storage.value.esdf_tiles) {
-      if(tile.volume != volume || tile.x != tile_x ||
-        tile.y != tile_y || tile.z != tile_z)
-        continue;
-      const auto& voxel = tile.voxels[local];
-      if((voxel.flags & 1U) == 0U || !std::isfinite(voxel.distance))
-        return false;
-      output = {voxel.distance, 1.0};
-      return true;
-    }
+    const auto found = storage.tsdf_index.find(key);
+    if(found == storage.tsdf_index.end())
+      return false;
+    const auto& voxel = storage.value.tsdf_tiles[found->second].voxels[local];
+    if((voxel.flags & 1U) == 0U || !(voxel.weight > 0.0F) ||
+      !std::isfinite(voxel.distance) || !std::isfinite(voxel.weight))
+      return false;
+    output = {voxel.distance, voxel.weight};
+    return true;
   }
-  return false;
+  const auto found = storage.esdf_index.find(key);
+  if(found == storage.esdf_index.end())
+    return false;
+  const auto& voxel = storage.value.esdf_tiles[found->second].voxels[local];
+  if((voxel.flags & 1U) == 0U || !std::isfinite(voxel.distance))
+    return false;
+  output = {voxel.distance, 1.0};
+  return true;
 }
 
 bool nearest(
