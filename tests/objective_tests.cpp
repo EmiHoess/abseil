@@ -1,5 +1,7 @@
 #include <seil/objective.hpp>
 
+#include "../src/internal.hpp"
+
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -18,6 +20,28 @@ void require(bool condition, const char* message)
 bool near(double left, double right)
 {
   return std::abs(left - right) < 1.0e-12;
+}
+
+std::array<double, 4> residual(
+  const seil::pose4& left,
+  const seil::pose4& right,
+  const seil::pose4& measured
+)
+{
+  const auto row = seil::detail::evaluate_pose_factor(
+    left, right, measured, seil::identity_matrix4(), {});
+  return row.residual;
+}
+
+void adjust(seil::pose4& value, std::size_t axis, double amount)
+{
+  switch(axis) {
+    case 0: value.x += amount; break;
+    case 1: value.y += amount; break;
+    case 2: value.z += amount; break;
+    case 3: value.yaw += amount; break;
+    default: break;
+  }
 }
 
 }
@@ -47,4 +71,40 @@ int main()
     "zero scale rejected");
   require(!seil::evaluate_loss({}, std::numeric_limits<double>::infinity()),
     "infinite residual rejected");
+
+  const seil::pose4 left{1.0, -2.0, 0.5, 0.3};
+  const seil::pose4 right{4.0, 1.0, -0.5, -0.2};
+  const seil::pose4 measured{3.5, 1.8, -0.8, -0.4};
+  const auto row = seil::detail::evaluate_pose_factor(
+    left, right, measured, seil::identity_matrix4(),
+    {seil::loss_kind::huber, 2.0});
+  require(row.cost > 0.0 && row.weight > 0.0 && row.weight <= 1.0,
+    "relative row robust accounting");
+
+  constexpr double step = 1.0e-6;
+  for(std::size_t column = 0; column < 4; ++column) {
+    seil::pose4 moved = left;
+    adjust(moved, column, step);
+    const auto plus = residual(moved, right, measured);
+    moved = left;
+    adjust(moved, column, -step);
+    const auto minus = residual(moved, right, measured);
+    for(std::size_t output = 0; output < 4; ++output) {
+      const double numerical = (plus[output] - minus[output]) / (2.0 * step);
+      require(std::abs(numerical - row.jacobian_i[output * 4U + column]) < 1.0e-6,
+        "left relative jacobian");
+    }
+  }
+
+  seil::problem graph;
+  graph.nodes.push_back({1, left, true});
+  graph.nodes.push_back({2, right, false});
+  graph.relative_factors.push_back({0, 1, measured});
+  auto prepared = seil::prepare(graph);
+  require(prepared.has_value(), "relative graph preparation");
+  const auto* storage = seil::detail::prepared_problem_access::get(*prepared);
+  const std::array poses{left, right};
+  const auto rows = seil::detail::evaluate_relative_factors(*storage, poses);
+  require(rows.size() == 1 && rows[0].active_i == -1 && rows[0].active_j == 0,
+    "fixed gauge activity");
 }

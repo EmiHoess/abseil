@@ -2,9 +2,11 @@
 
 #include <seil/problem.hpp>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -62,6 +64,16 @@ struct prepared_storage {
   std::string hash;
 };
 
+struct pose_factor_row {
+  std::array<double, 4> residual{};
+  std::array<double, 16> jacobian_i{};
+  std::array<double, 16> jacobian_j{};
+  double cost{};
+  double weight{};
+  std::int32_t active_i{-1};
+  std::int32_t active_j{-1};
+};
+
 struct prepared_problem_access {
   static prepared_problem make(std::shared_ptr<const prepared_storage> storage);
   static const prepared_storage* get(const prepared_problem& value) noexcept;
@@ -69,5 +81,16 @@ struct prepared_problem_access {
 
 double robust_cost(const loss& robust_loss, double residual) noexcept;
 double robust_weight(const loss& robust_loss, double residual) noexcept;
+pose_factor_row evaluate_pose_factor(
+  const pose4& left,
+  const pose4& right,
+  const pose4& measured,
+  const matrix4& sqrt_information,
+  const loss& robust_loss
+) noexcept;
+std::vector<pose_factor_row> evaluate_relative_factors(
+  const prepared_storage& storage,
+  std::span<const pose4> poses
+);
 
 }
