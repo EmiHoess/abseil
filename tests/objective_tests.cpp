@@ -174,4 +174,20 @@ int main()
     confidence, &statistics);
   require(confidence_rows[0].rejection == 0 && near(confidence, 2.5),
     "confidence registration row");
+
+  const seil::pose4 source_pose{1.0, 2.0, 3.0, 0.2};
+  const seil::pose4 target_pose{-1.0, 0.5, 1.0, -0.4};
+  const seil::vector3 local_point{2.0, -3.0, 4.0};
+  const auto world_point = seil::transform_point(source_pose, local_point);
+  const auto direct_point = seil::transform_point_between(
+    source_pose, target_pose, local_point);
+  const auto composed_point = seil::inverse_transform_point(target_pose, world_point);
+  require(near(direct_point.x, composed_point.x) &&
+    near(direct_point.y, composed_point.y) && near(direct_point.z, composed_point.z),
+    "shared frame transformation");
+  const auto derivative = seil::rotate_yaw_derivative(local_point, source_pose.yaw);
+  const auto plus_rotation = seil::rotate_yaw(local_point, source_pose.yaw + step);
+  const auto minus_rotation = seil::rotate_yaw(local_point, source_pose.yaw - step);
+  require(std::abs(derivative.x - (plus_rotation.x - minus_rotation.x) /
+    (2.0 * step)) < 1.0e-6, "shared yaw derivative");
 }

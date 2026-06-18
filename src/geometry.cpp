@@ -50,6 +50,17 @@ vector3 rotate_yaw(const vector3& value, double yaw) noexcept
   };
 }
 
+vector3 rotate_yaw_derivative(const vector3& value, double yaw) noexcept
+{
+  const double cosine = std::cos(yaw);
+  const double sine = std::sin(yaw);
+  return {
+    -sine * value.x - cosine * value.y,
+    cosine * value.x - sine * value.y,
+    0.0
+  };
+}
+
 vector3 transform_point(const pose4& pose, const vector3& point) noexcept
 {
   vector3 result = rotate_yaw(point, pose.yaw);
@@ -67,6 +78,15 @@ vector3 inverse_transform_point(const pose4& pose, const vector3& point) noexcep
     point.z - pose.z
   };
   return rotate_yaw(translated, -pose.yaw);
+}
+
+vector3 transform_point_between(
+  const pose4& from,
+  const pose4& to,
+  const vector3& point
+) noexcept
+{
+  return inverse_transform_point(to, transform_point(from, point));
 }
 
 pose4 compose_pose(const pose4& left, const pose4& right) noexcept

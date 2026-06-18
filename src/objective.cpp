@@ -53,15 +53,14 @@ pose_factor_row evaluate_pose_factor(
 {
   const double cosine = std::cos(left.yaw);
   const double sine = std::sin(left.yaw);
-  const double dx = right.x - left.x;
-  const double dy = right.y - left.y;
-  const double px = cosine * dx + sine * dy;
-  const double py = -sine * dx + cosine * dy;
+  const pose4 predicted = relative_pose(left, right);
+  const double px = predicted.x;
+  const double py = predicted.y;
   const double raw[4]{
     px - measured.x,
     py - measured.y,
-    right.z - left.z - measured.z,
-    wrap_yaw(right.yaw - left.yaw - measured.yaw)
+    predicted.z - measured.z,
+    wrap_yaw(predicted.yaw - measured.yaw)
   };
   const double raw_i[16]{
     -cosine, -sine, 0.0, py,
@@ -157,21 +156,10 @@ std::vector<registration_row> evaluate_registration_group(
       (!uniform && sample.reference_tsdf_weight < model.minimum_tsdf_weight))
       row.rejection = 2;
 
-    const double reference_cosine = std::cos(reference.yaw);
-    const double reference_sine = std::sin(reference.yaw);
-    const double rotated_x = reference_cosine * sample.reference_local_point.x -
-      reference_sine * sample.reference_local_point.y;
-    const double rotated_y = reference_sine * sample.reference_local_point.x +
-      reference_cosine * sample.reference_local_point.y;
-    const double world_x = reference.x + rotated_x - reading.x;
-    const double world_y = reference.y + rotated_y - reading.y;
     const double reading_cosine = std::cos(reading.yaw);
     const double reading_sine = std::sin(reading.yaw);
-    const vector3 point{
-      reading_cosine * world_x + reading_sine * world_y,
-      -reading_sine * world_x + reading_cosine * world_y,
-      reference.z + sample.reference_local_point.z - reading.z
-    };
+    const vector3 point = transform_point_between(
+      reference, reading, sample.reference_local_point);
 
     field_query confidence;
     if(!uniform && row.rejection == 0 &&
@@ -210,17 +198,14 @@ std::vector<registration_row> evaluate_registration_group(
       std::abs(row.residual) > model.maximum_absolute_residual_m)
       row.rejection = 7;
     if(row.rejection == 0) {
-      const double yaw_world_x = -rotated_y;
-      const double yaw_world_y = rotated_x;
-      const double yaw_reading_x = reading_cosine * yaw_world_x +
-        reading_sine * yaw_world_y;
-      const double yaw_reading_y = -reading_sine * yaw_world_x +
-        reading_cosine * yaw_world_y;
+      const vector3 yaw_world = rotate_yaw_derivative(
+        sample.reference_local_point, reference.yaw);
+      const vector3 yaw_reading = rotate_yaw(yaw_world, -reading.yaw);
       row.jacobian_i = {
         -(gx * reading_cosine - gy * reading_sine),
         -(gx * reading_sine + gy * reading_cosine),
         -gz,
-        -(gx * yaw_reading_x + gy * yaw_reading_y)
+        -(gx * yaw_reading.x + gy * yaw_reading.y)
       };
       row.jacobian_j = {
         -row.jacobian_i[0],
