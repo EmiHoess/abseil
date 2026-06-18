@@ -114,6 +114,24 @@ std::vector<pose_factor_row> evaluate_relative_factors(
   return rows;
 }
 
+std::vector<pose_factor_row> evaluate_absolute_factors(
+  const prepared_storage& storage,
+  std::span<const pose4> poses
+)
+{
+  std::vector<pose_factor_row> rows;
+  rows.reserve(storage.value.absolute_factors.size());
+  for(const auto& factor : storage.value.absolute_factors) {
+    pose_factor_row row = evaluate_pose_factor(
+      poses[factor.reference_node], poses[factor.measured_node],
+      factor.measured_relative, factor.sqrt_information, factor.robust_loss);
+    row.active_i = storage.topology.active_node[factor.reference_node];
+    row.active_j = storage.topology.active_node[factor.measured_node];
+    rows.push_back(std::move(row));
+  }
+  return rows;
+}
+
 }
 
 namespace seil {

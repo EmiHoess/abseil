@@ -92,5 +92,9 @@ std::vector<pose_factor_row> evaluate_relative_factors(
   const prepared_storage& storage,
   std::span<const pose4> poses
 );
+std::vector<pose_factor_row> evaluate_absolute_factors(
+  const prepared_storage& storage,
+  std::span<const pose4> poses
+);
 
 }

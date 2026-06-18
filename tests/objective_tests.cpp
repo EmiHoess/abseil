@@ -107,4 +107,22 @@ int main()
   const auto rows = seil::detail::evaluate_relative_factors(*storage, poses);
   require(rows.size() == 1 && rows[0].active_i == -1 && rows[0].active_j == 0,
     "fixed gauge activity");
+
+  graph.relative_factors.clear();
+  graph.absolute_factors.push_back({0, 1, measured,
+    seil::identity_matrix4(2.0), {seil::loss_kind::cauchy, 3.0}, 91});
+  prepared = seil::prepare(graph);
+  require(prepared.has_value(), "absolute graph preparation");
+  storage = seil::detail::prepared_problem_access::get(*prepared);
+  const auto absolute_rows = seil::detail::evaluate_absolute_factors(*storage, poses);
+  require(absolute_rows.size() == 1 && absolute_rows[0].active_i == -1 &&
+    absolute_rows[0].active_j == 0, "absolute activity");
+  const auto expected = seil::detail::evaluate_pose_factor(left, right, measured,
+    seil::identity_matrix4(2.0), {seil::loss_kind::cauchy, 3.0});
+  require(near(absolute_rows[0].cost, expected.cost) &&
+    near(absolute_rows[0].weight, expected.weight),
+    "absolute loss accounting");
+  for(std::size_t index = 0; index < expected.residual.size(); ++index)
+    require(near(absolute_rows[0].residual[index], expected.residual[index]),
+      "absolute residual direction");
 }
