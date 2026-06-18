@@ -237,6 +237,155 @@ std::vector<registration_row> evaluate_registration_group(
   return rows;
 }
 
+namespace {
+
+void add_matrix_gradient(
+  std::vector<double>& gradient,
+  std::int32_t active,
+  const std::array<double, 16>& jacobian,
+  const std::array<double, 4>& residual,
+  double weight
+)
+{
+  if(active < 0)
+    return;
+  for(std::size_t column = 0; column < 4; ++column)
+    for(std::size_t row = 0; row < 4; ++row)
+      gradient[static_cast<std::size_t>(active) * 4U + column] +=
+        weight * jacobian[row * 4U + column] * residual[row];
+}
+
+void add_matrix_outer(
+  std::vector<double>& hessian,
+  std::size_t dimension,
+  std::int32_t active_i,
+  std::int32_t active_j,
+  const std::array<double, 16>& left,
+  const std::array<double, 16>& right,
+  double weight
+)
+{
+  if(active_i < 0 || active_j < 0)
+    return;
+  const std::size_t row_offset = static_cast<std::size_t>(active_i) * 4U;
+  const std::size_t column_offset = static_cast<std::size_t>(active_j) * 4U;
+  for(std::size_t row = 0; row < 4; ++row)
+    for(std::size_t column = 0; column < 4; ++column)
+      for(std::size_t inner = 0; inner < 4; ++inner)
+        hessian[(row_offset + row) * dimension + column_offset + column] +=
+          weight * left[inner * 4U + row] * right[inner * 4U + column];
+}
+
+void add_pose_row(
+  objective_equations& equations,
+  const pose_factor_row& row,
+  bool derivatives,
+  std::size_t dimension
+)
+{
+  if(!derivatives || !(row.weight > 0.0))
+    return;
+  add_matrix_outer(equations.dense_hessian, dimension, row.active_i, row.active_i,
+    row.jacobian_i, row.jacobian_i, row.weight);
+  add_matrix_outer(equations.dense_hessian, dimension, row.active_j, row.active_j,
+    row.jacobian_j, row.jacobian_j, row.weight);
+  add_matrix_outer(equations.dense_hessian, dimension, row.active_i, row.active_j,
+    row.jacobian_i, row.jacobian_j, row.weight);
+  add_matrix_outer(equations.dense_hessian, dimension, row.active_j, row.active_i,
+    row.jacobian_j, row.jacobian_i, row.weight);
+  add_matrix_gradient(equations.gradient, row.active_i, row.jacobian_i,
+    row.residual, row.weight);
+  add_matrix_gradient(equations.gradient, row.active_j, row.jacobian_j,
+    row.residual, row.weight);
+}
+
+void add_scalar_row(
+  objective_equations& equations,
+  const registration_row& row,
+  double weight,
+  std::size_t dimension
+)
+{
+  const auto add_gradient = [&](std::int32_t active,
+    const std::array<double, 4>& jacobian) {
+    if(active < 0)
+      return;
+    for(std::size_t axis = 0; axis < 4; ++axis)
+      equations.gradient[static_cast<std::size_t>(active) * 4U + axis] +=
+        weight * jacobian[axis] * row.residual;
+  };
+  const auto add_outer = [&](std::int32_t active_i, std::int32_t active_j,
+    const std::array<double, 4>& left, const std::array<double, 4>& right) {
+    if(active_i < 0 || active_j < 0)
+      return;
+    const std::size_t row_offset = static_cast<std::size_t>(active_i) * 4U;
+    const std::size_t column_offset = static_cast<std::size_t>(active_j) * 4U;
+    for(std::size_t i = 0; i < 4; ++i)
+      for(std::size_t j = 0; j < 4; ++j)
+        equations.dense_hessian[(row_offset + i) * dimension + column_offset + j] +=
+          weight * left[i] * right[j];
+  };
+  add_gradient(row.active_i, row.jacobian_i);
+  add_gradient(row.active_j, row.jacobian_j);
+  add_outer(row.active_i, row.active_i, row.jacobian_i, row.jacobian_i);
+  add_outer(row.active_j, row.active_j, row.jacobian_j, row.jacobian_j);
+  add_outer(row.active_i, row.active_j, row.jacobian_i, row.jacobian_j);
+  add_outer(row.active_j, row.active_i, row.jacobian_j, row.jacobian_i);
+}
+
+}
+
+operation_result<objective_equations> assemble_objective(
+  const prepared_storage& storage,
+  std::span<const pose4> poses,
+  bool with_derivatives
+)
+{
+  if(poses.size() != storage.value.nodes.size())
+    return std::unexpected(operation_error{operation_code::invalid_argument,
+      operation_stage::validation, 0, "pose count does not match prepared problem"});
+  if(!std::all_of(poses.begin(), poses.end(), finite_pose))
+    return std::unexpected(operation_error{operation_code::invalid_argument,
+      operation_stage::validation, 0, "pose array contains non-finite values"});
+
+  objective_equations equations;
+  const std::size_t dimension = storage.topology.active_count * 4U;
+  if(with_derivatives) {
+    equations.gradient.assign(dimension, 0.0);
+    equations.dense_hessian.assign(dimension * dimension, 0.0);
+  }
+
+  for(const auto& row : evaluate_relative_factors(storage, poses)) {
+    equations.cost.relative += row.cost;
+    add_pose_row(equations, row, with_derivatives, dimension);
+  }
+  for(const auto& row : evaluate_absolute_factors(storage, poses)) {
+    equations.cost.absolute += row.cost;
+    add_pose_row(equations, row, with_derivatives, dimension);
+  }
+  for(const auto& group : storage.value.registration_groups) {
+    double total_confidence = 0.0;
+    const auto rows = evaluate_registration_group(
+      storage, group, poses, total_confidence, &equations.registration);
+    const bool uniform = storage.value.registration.profile ==
+      registration_profile::uniform_trilinear;
+    for(const auto& row : rows) {
+      if(row.rejection != 0)
+        continue;
+      const double confidence = uniform ? row.confidence :
+        row.confidence / total_confidence;
+      const double loss_weight = robust_weight(
+        storage.value.registration.robust_loss, row.residual);
+      const double weight = group.direction_weight * confidence * loss_weight;
+      equations.cost.registration += group.direction_weight * confidence *
+        robust_cost(storage.value.registration.robust_loss, row.residual);
+      if(with_derivatives)
+        add_scalar_row(equations, row, weight, dimension);
+    }
+  }
+  return equations;
+}
+
 }
 
 namespace seil {

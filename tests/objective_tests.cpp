@@ -190,4 +190,14 @@ int main()
   const auto minus_rotation = seil::rotate_yaw(local_point, source_pose.yaw - step);
   require(std::abs(derivative.x - (plus_rotation.x - minus_rotation.x) /
     (2.0 * step)) < 1.0e-6, "shared yaw derivative");
+
+  auto assembled = seil::detail::assemble_objective(
+    *storage, registration_poses, true);
+  require(assembled.has_value(), "objective assembly");
+  require(assembled->cost.registration >= 0.0 &&
+    assembled->registration.accepted_rows == 1, "objective split diagnostics");
+  require(assembled->gradient.size() == 4 &&
+    assembled->dense_hessian.size() == 16, "objective derivative dimensions");
+  require(!seil::detail::assemble_objective(*storage,
+    std::span<const seil::pose4>{}, false), "objective pose count validation");
 }

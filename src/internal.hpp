@@ -86,6 +86,13 @@ struct registration_row {
   std::int32_t active_j{-1};
 };
 
+struct objective_equations {
+  cost_breakdown cost{};
+  registration_statistics registration{};
+  std::vector<double> dense_hessian;
+  std::vector<double> gradient;
+};
+
 struct prepared_problem_access {
   static prepared_problem make(std::shared_ptr<const prepared_storage> storage);
   static const prepared_storage* get(const prepared_problem& value) noexcept;
@@ -123,6 +130,11 @@ std::vector<registration_row> evaluate_registration_group(
   std::span<const pose4> poses,
   double& total_confidence,
   registration_statistics* statistics
+);
+operation_result<objective_equations> assemble_objective(
+  const prepared_storage& storage,
+  std::span<const pose4> poses,
+  bool with_derivatives
 );
 
 }
