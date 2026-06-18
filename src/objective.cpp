@@ -132,6 +132,126 @@ std::vector<pose_factor_row> evaluate_absolute_factors(
   return rows;
 }
 
+std::vector<registration_row> evaluate_registration_group(
+  const prepared_storage& storage,
+  const registration_group& group,
+  std::span<const pose4> poses,
+  double& total_confidence,
+  registration_statistics* statistics
+)
+{
+  std::vector<registration_row> rows(group.sample_count);
+  total_confidence = 0.0;
+  const auto& model = storage.value.registration;
+  const bool uniform = model.profile == registration_profile::uniform_trilinear;
+  const pose4& reference = poses[group.node_i];
+  const pose4& reading = poses[group.node_j];
+
+  for(std::size_t local = 0; local < group.sample_count; ++local) {
+    const auto& sample = storage.value.registration_samples[group.sample_begin + local];
+    auto& row = rows[local];
+    row.active_i = storage.topology.active_node[group.node_i];
+    row.active_j = storage.topology.active_node[group.node_j];
+    if(!std::isfinite(sample.reference_distance) ||
+      !std::isfinite(sample.reference_tsdf_weight) ||
+      (!uniform && sample.reference_tsdf_weight < model.minimum_tsdf_weight))
+      row.rejection = 2;
+
+    const double reference_cosine = std::cos(reference.yaw);
+    const double reference_sine = std::sin(reference.yaw);
+    const double rotated_x = reference_cosine * sample.reference_local_point.x -
+      reference_sine * sample.reference_local_point.y;
+    const double rotated_y = reference_sine * sample.reference_local_point.x +
+      reference_cosine * sample.reference_local_point.y;
+    const double world_x = reference.x + rotated_x - reading.x;
+    const double world_y = reference.y + rotated_y - reading.y;
+    const double reading_cosine = std::cos(reading.yaw);
+    const double reading_sine = std::sin(reading.yaw);
+    const vector3 point{
+      reading_cosine * world_x + reading_sine * world_y,
+      -reading_sine * world_x + reading_cosine * world_y,
+      reference.z + sample.reference_local_point.z - reading.z
+    };
+
+    field_query confidence;
+    if(!uniform && row.rejection == 0 &&
+      !sample_field(storage, field_kind::tsdf, group.volume_j, point,
+        field_interpolation::trilinear, true, confidence)) {
+      if(!model.allow_nearest_fallback ||
+        !sample_field(storage, field_kind::tsdf, group.volume_j, point,
+          field_interpolation::nearest, false, confidence))
+        row.rejection = 4;
+    }
+    if(!uniform && row.rejection == 0 &&
+      confidence.sample.weight < model.minimum_tsdf_weight)
+      row.rejection = 3;
+
+    field_query query;
+    if(row.rejection == 0 &&
+      !sample_field(storage, group.field, group.volume_j, point,
+        field_interpolation::trilinear, true, query)) {
+      if(uniform || !model.allow_nearest_fallback ||
+        !sample_field(storage, group.field, group.volume_j, point,
+          field_interpolation::nearest, true, query))
+        row.rejection = 5;
+    }
+    if(row.rejection == 0 && !query.gradient_valid)
+      row.rejection = 6;
+    const double gx = query.gradient.x;
+    const double gy = query.gradient.y;
+    const double gz = query.gradient.z;
+    const double gradient_norm = std::sqrt(gx * gx + gy * gy + gz * gz);
+    if(!uniform && row.rejection == 0 &&
+      !(gradient_norm >= model.minimum_gradient_norm))
+      row.rejection = 6;
+
+    row.residual = sample.reference_distance - query.sample.distance;
+    if(row.rejection == 0 && model.maximum_absolute_residual_m > 0.0 &&
+      std::abs(row.residual) > model.maximum_absolute_residual_m)
+      row.rejection = 7;
+    if(row.rejection == 0) {
+      const double yaw_world_x = -rotated_y;
+      const double yaw_world_y = rotated_x;
+      const double yaw_reading_x = reading_cosine * yaw_world_x +
+        reading_sine * yaw_world_y;
+      const double yaw_reading_y = -reading_sine * yaw_world_x +
+        reading_cosine * yaw_world_y;
+      row.jacobian_i = {
+        -(gx * reading_cosine - gy * reading_sine),
+        -(gx * reading_sine + gy * reading_cosine),
+        -gz,
+        -(gx * yaw_reading_x + gy * yaw_reading_y)
+      };
+      row.jacobian_j = {
+        -row.jacobian_i[0],
+        -row.jacobian_i[1],
+        -row.jacobian_i[2],
+        -(gx * point.y - gy * point.x)
+      };
+      row.confidence = uniform ? 1.0 :
+        std::min(model.maximum_confidence_weight,
+          std::min(sample.reference_tsdf_weight, confidence.sample.weight));
+      bool finite = std::isfinite(row.residual) && std::isfinite(row.confidence) &&
+        row.confidence > 0.0;
+      for(double item : row.jacobian_i)
+        finite = finite && std::isfinite(item);
+      for(double item : row.jacobian_j)
+        finite = finite && std::isfinite(item);
+      if(!finite)
+        row.rejection = 8;
+    }
+
+    if(row.rejection == 0) {
+      total_confidence += row.confidence;
+      if(statistics != nullptr)
+        ++statistics->accepted_rows;
+    } else if(statistics != nullptr && row.rejection < statistics->rejections.size()) {
+      ++statistics->rejections[row.rejection];
+    }
+  }
+  return rows;
+}
+
 }
 
 namespace seil {

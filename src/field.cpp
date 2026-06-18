@@ -163,6 +163,28 @@ operation_error field_error(std::string message)
 
 }
 
+namespace detail {
+
+bool sample_field(
+  const prepared_storage& storage,
+  field_kind field,
+  std::size_t volume,
+  vector3 point,
+  field_interpolation interpolation,
+  bool calculate_gradient,
+  field_query& output
+)
+{
+  if(volume >= storage.value.volumes.size())
+    return false;
+  const double voxel_size = storage.value.volumes[volume].voxel_size;
+  return interpolation == field_interpolation::nearest ?
+    nearest(storage, field, volume, voxel_size, point, calculate_gradient, output) :
+    trilinear(storage, field, volume, voxel_size, point, output);
+}
+
+}
+
 operation_result<field_query> query_field(
   const prepared_problem& value,
   field_kind field,
@@ -183,10 +205,8 @@ operation_result<field_query> query_field(
     return std::unexpected(field_error("field is not available for volume"));
 
   field_query output;
-  const bool found = interpolation == field_interpolation::nearest ?
-    nearest(*storage, field, volume, field_volume.voxel_size, point,
-      calculate_gradient, output) :
-    trilinear(*storage, field, volume, field_volume.voxel_size, point, output);
+  const bool found = detail::sample_field(*storage, field, volume, point,
+    interpolation, calculate_gradient, output);
   if(!found)
     return std::unexpected(field_error("field sample is unavailable"));
   return output;

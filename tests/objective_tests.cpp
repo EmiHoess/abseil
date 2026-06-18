@@ -125,4 +125,53 @@ int main()
   for(std::size_t index = 0; index < expected.residual.size(); ++index)
     require(near(absolute_rows[0].residual[index], expected.residual[index]),
       "absolute residual direction");
+
+  graph.absolute_factors.clear();
+  graph.volumes.push_back({0, 1.0, true, true});
+  graph.volumes.push_back({1, 1.0, true, true});
+  seil::tsdf_tile tsdf;
+  seil::esdf_tile esdf;
+  tsdf.volume = 1;
+  esdf.volume = 1;
+  for(std::size_t z = 0; z < seil::tile_edge; ++z)
+    for(std::size_t y = 0; y < seil::tile_edge; ++y)
+      for(std::size_t x = 0; x < seil::tile_edge; ++x) {
+        const std::size_t index = x + 8U * (y + 8U * z);
+        const float distance = static_cast<float>(x);
+        tsdf.voxels[index] = {distance, 4.0F, 1U};
+        esdf.voxels[index] = {distance, 1U};
+      }
+  graph.tsdf_tiles.push_back(tsdf);
+  graph.esdf_tiles.push_back(esdf);
+  graph.registration_samples.push_back({0, {2.5, 2.5, 2.5}, 2.0, 3.0, 1});
+  graph.registration_groups.push_back({0, 1, 0, 1, seil::field_kind::esdf,
+    0, 1, 1.0, 7});
+  graph.nodes[0].initial = {};
+  graph.nodes[1].initial = {};
+  graph.registration.profile = seil::registration_profile::uniform_trilinear;
+  prepared = seil::prepare(graph);
+  require(prepared.has_value(), "registration graph preparation");
+  storage = seil::detail::prepared_problem_access::get(*prepared);
+  const std::array registration_poses{graph.nodes[0].initial, graph.nodes[1].initial};
+  seil::registration_statistics statistics;
+  double confidence = 0.0;
+  const auto registration_rows = seil::detail::evaluate_registration_group(
+    *storage, storage->value.registration_groups[0], registration_poses,
+    confidence, &statistics);
+  require(registration_rows.size() == 1 && registration_rows[0].rejection == 0,
+    "registration row accepted");
+  require(near(registration_rows[0].residual, 0.0) && near(confidence, 1.0) &&
+    statistics.accepted_rows == 1, "registration row values");
+
+  graph.registration.profile = seil::registration_profile::confidence_weighted;
+  graph.registration.maximum_confidence_weight = 2.5;
+  prepared = seil::prepare(graph);
+  require(prepared.has_value(), "confidence graph preparation");
+  storage = seil::detail::prepared_problem_access::get(*prepared);
+  statistics = {};
+  const auto confidence_rows = seil::detail::evaluate_registration_group(
+    *storage, storage->value.registration_groups[0], registration_poses,
+    confidence, &statistics);
+  require(confidence_rows[0].rejection == 0 && near(confidence, 2.5),
+    "confidence registration row");
 }

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <seil/problem.hpp>
+#include <seil/field.hpp>
+#include <seil/solver.hpp>
 
 #include <array>
 #include <cstddef>
@@ -74,6 +76,16 @@ struct pose_factor_row {
   std::int32_t active_j{-1};
 };
 
+struct registration_row {
+  double residual{};
+  std::array<double, 4> jacobian_i{};
+  std::array<double, 4> jacobian_j{};
+  double confidence{};
+  std::uint32_t rejection{};
+  std::int32_t active_i{-1};
+  std::int32_t active_j{-1};
+};
+
 struct prepared_problem_access {
   static prepared_problem make(std::shared_ptr<const prepared_storage> storage);
   static const prepared_storage* get(const prepared_problem& value) noexcept;
@@ -95,6 +107,22 @@ std::vector<pose_factor_row> evaluate_relative_factors(
 std::vector<pose_factor_row> evaluate_absolute_factors(
   const prepared_storage& storage,
   std::span<const pose4> poses
+);
+bool sample_field(
+  const prepared_storage& storage,
+  field_kind field,
+  std::size_t volume,
+  vector3 point,
+  field_interpolation interpolation,
+  bool calculate_gradient,
+  field_query& output
+);
+std::vector<registration_row> evaluate_registration_group(
+  const prepared_storage& storage,
+  const registration_group& group,
+  std::span<const pose4> poses,
+  double& total_confidence,
+  registration_statistics* statistics
 );
 
 }
