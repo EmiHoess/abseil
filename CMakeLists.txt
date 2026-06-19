@@ -17,6 +17,7 @@ add_library(seil STATIC
   src/geometry.cpp
   src/objective.cpp
   src/problem.cpp
+  src/sparse_system.cpp
 )
 add_library(seil::seil ALIAS seil)
 
@@ -53,6 +54,10 @@ if(BUILD_TESTING)
   add_executable(seil_objective_tests tests/objective_tests.cpp)
   target_link_libraries(seil_objective_tests PRIVATE seil::seil)
   add_test(NAME seil_objective_tests COMMAND seil_objective_tests)
+
+  add_executable(seil_sparse_system_tests tests/sparse_system_tests.cpp)
+  target_link_libraries(seil_sparse_system_tests PRIVATE seil::seil)
+  add_test(NAME seil_sparse_system_tests COMMAND seil_sparse_system_tests)
 endif()
 
 set(seil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/seil")
