@@ -1,4 +1,5 @@
 #include "internal.hpp"
+#include "sparse_system.hpp"
 
 #include <seil/objective.hpp>
 
@@ -414,6 +415,45 @@ operation_result<robust_evaluation> evaluate_loss(
     detail::robust_cost(robust_loss, residual),
     detail::robust_weight(robust_loss, residual)
   };
+}
+
+operation_result<objective_snapshot> evaluate(
+  const prepared_problem& value,
+  std::span<const pose4> poses
+)
+{
+  const auto* storage = detail::prepared_problem_access::get(value);
+  if(storage == nullptr)
+    return std::unexpected(operation_error{operation_code::invalid_argument,
+      operation_stage::validation, 0, "problem is not prepared"});
+  auto equations = detail::assemble_objective(*storage, poses, false);
+  if(!equations)
+    return std::unexpected(std::move(equations.error()));
+  return objective_snapshot{equations->cost, equations->registration};
+}
+
+operation_result<linearization_snapshot> linearize(
+  const prepared_problem& value,
+  std::span<const pose4> poses
+)
+{
+  const auto* storage = detail::prepared_problem_access::get(value);
+  if(storage == nullptr)
+    return std::unexpected(operation_error{operation_code::invalid_argument,
+      operation_stage::validation, 0, "problem is not prepared"});
+  auto system = detail::build_sparse_system(*storage, poses);
+  if(!system)
+    return std::unexpected(std::move(system.error()));
+
+  linearization_snapshot output;
+  output.cost = system->cost;
+  output.registration = system->registration;
+  output.hessian_blocks = std::move(system->hessian);
+  output.gradient = std::move(system->gradient);
+  output.sparse_blocks.reserve(system->blocks.size());
+  for(const auto& block : system->blocks)
+    output.sparse_blocks.push_back({block.row, block.column});
+  return output;
 }
 
 }

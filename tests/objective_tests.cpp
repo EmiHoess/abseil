@@ -200,4 +200,14 @@ int main()
     assembled->dense_hessian.size() == 16, "objective derivative dimensions");
   require(!seil::detail::assemble_objective(*storage,
     std::span<const seil::pose4>{}, false), "objective pose count validation");
+
+  auto public_cost = seil::evaluate(*prepared, registration_poses);
+  require(public_cost.has_value() && public_cost->registration.accepted_rows == 1,
+    "public objective diagnostics");
+  auto public_system = seil::linearize(*prepared, registration_poses);
+  require(public_system.has_value() && public_system->gradient.size() == 4 &&
+    public_system->hessian_blocks.size() == 16,
+    "public linearization diagnostics");
+  require(!seil::evaluate(*prepared, std::span<const seil::pose4>{}),
+    "public pose count validation");
 }
