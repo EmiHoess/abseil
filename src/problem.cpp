@@ -320,8 +320,16 @@ operation_result<prepared_problem> prepare(problem value)
   for(const registration_group& group : input.registration_groups)
     add_candidate(group.node_i, group.node_j);
   storage->topology.sparse_candidates.reserve(candidate_pairs.size());
-  for(const auto& [row, column] : candidate_pairs)
+  storage->topology.sparse_slot_index.reserve(candidate_pairs.size());
+  for(const auto& [row, column] : candidate_pairs) {
+    const auto slot = static_cast<std::int32_t>(
+      storage->topology.sparse_candidates.size());
     storage->topology.sparse_candidates.push_back({row, column});
+    const std::uint64_t key = static_cast<std::uint64_t>(
+      static_cast<std::uint32_t>(row)) << 32U |
+      static_cast<std::uint32_t>(column);
+    storage->topology.sparse_slot_index.emplace(key, slot);
+  }
 
   std::vector<bool> visited(input.nodes.size());
   storage->topology.component_of_node.resize(input.nodes.size());

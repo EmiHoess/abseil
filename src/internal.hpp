@@ -54,6 +54,7 @@ struct topology_index {
   std::vector<std::size_t> component_of_node;
   std::vector<graph_component> components;
   std::vector<sparse_candidate> sparse_candidates;
+  std::unordered_map<std::uint64_t, std::int32_t> sparse_slot_index;
   std::size_t active_count{};
   std::size_t unanchored_components{};
 };
@@ -136,5 +137,10 @@ operation_result<objective_equations> assemble_objective(
   std::span<const pose4> poses,
   bool with_derivatives
 );
+std::int32_t sparse_slot(
+  const topology_index& topology,
+  std::int32_t row,
+  std::int32_t column
+) noexcept;
 
 }

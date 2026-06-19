@@ -41,6 +41,10 @@ int main()
     system->blocks[1].row == 0 && system->blocks[1].column == 1 &&
     system->blocks[2].row == 1 && system->blocks[2].column == 1,
     "deterministic block order");
+  require(seil::detail::sparse_slot(storage->topology, 0, 1) == 1 &&
+    seil::detail::sparse_slot(storage->topology, 1, 0) == 1 &&
+    seil::detail::sparse_slot(storage->topology, -1, 0) == -1,
+    "direct sparse slot lookup");
   require(system->cost.relative > 0.0, "sparse system cost");
   for(double value : system->hessian)
     require(std::isfinite(value), "finite sparse hessian");
