@@ -15,6 +15,7 @@ option(seil_enable_cuda "Build the cold-snapshot CUDA backend" OFF)
 add_library(seil STATIC
   src/field.cpp
   src/geometry.cpp
+  src/linear_solver.cpp
   src/objective.cpp
   src/problem.cpp
   src/sparse_system.cpp
@@ -58,6 +59,10 @@ if(BUILD_TESTING)
   add_executable(seil_sparse_system_tests tests/sparse_system_tests.cpp)
   target_link_libraries(seil_sparse_system_tests PRIVATE seil::seil)
   add_test(NAME seil_sparse_system_tests COMMAND seil_sparse_system_tests)
+
+  add_executable(seil_linear_solver_tests tests/linear_solver_tests.cpp)
+  target_link_libraries(seil_linear_solver_tests PRIVATE seil::seil)
+  add_test(NAME seil_linear_solver_tests COMMAND seil_linear_solver_tests)
 endif()
 
 set(seil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/seil")
