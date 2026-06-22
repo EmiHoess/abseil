@@ -49,4 +49,24 @@ int main()
   invalid.lm.initial_damping = 0.0;
   require(!seil::detail::solve_native_cpu(problem, {}, invalid),
     "invalid native options rejected");
+
+  seil::detail::native_termination_state state;
+  state.gradient_norm = 1.0;
+  state.elapsed_seconds = 31.0;
+  require(seil::detail::native_termination(state, {}, {}).value() ==
+    seil::termination::maximum_time, "time termination policy");
+  state.elapsed_seconds = 0.0;
+  state.gradient_norm = 0.0;
+  require(seil::detail::native_termination(state, {}, {}).value() ==
+    seil::termination::converged_gradient, "gradient termination policy");
+  state.gradient_norm = 1.0;
+  state.step_complete = true;
+  state.accepted = true;
+  state.update_norm = 0.0;
+  require(seil::detail::native_termination(state, {}, {}).value() ==
+    seil::termination::converged_update, "update termination policy");
+  state.accepted = false;
+  state.rejected_steps = 8;
+  require(seil::detail::native_termination(state, {}, {}).value() ==
+    seil::termination::rejection_limit, "rejection termination policy");
 }

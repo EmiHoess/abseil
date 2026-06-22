@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -102,6 +103,16 @@ struct linear_workspace {
   std::vector<std::array<double, 16>> inverse_blocks;
 };
 
+struct native_termination_state {
+  double elapsed_seconds{};
+  double gradient_norm{};
+  double update_norm{};
+  double cost_change{};
+  std::size_t rejected_steps{};
+  bool step_complete{};
+  bool accepted{};
+};
+
 struct prepared_problem_access {
   static prepared_problem make(std::shared_ptr<const prepared_storage> storage);
   static const prepared_storage* get(const prepared_problem& value) noexcept;
@@ -155,5 +166,10 @@ operation_result<solve_result> solve_native_cpu(
   const common_options& common,
   const native_cpu_options& options
 );
+std::optional<termination> native_termination(
+  const native_termination_state& state,
+  const common_options& common,
+  const native_lm_options& options
+) noexcept;
 
 }

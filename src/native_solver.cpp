@@ -76,6 +76,39 @@ double apply_update(
   return std::sqrt(std::max(0.0, squared_norm));
 }
 
+std::string termination_message(termination value)
+{
+  switch(value) {
+    case termination::converged_cost: return "cost tolerance reached";
+    case termination::converged_gradient: return "gradient tolerance reached";
+    case termination::converged_update: return "update tolerance reached";
+    case termination::maximum_time: return "maximum solve time reached";
+    case termination::rejection_limit: return "rejected step limit reached";
+    default: return "native termination condition reached";
+  }
+}
+
+}
+
+std::optional<termination> native_termination(
+  const native_termination_state& state,
+  const common_options& common,
+  const native_lm_options& options
+) noexcept
+{
+  if(state.elapsed_seconds >= common.maximum_seconds)
+    return termination::maximum_time;
+  if(state.gradient_norm <= options.minimum_gradient_norm)
+    return termination::converged_gradient;
+  if(!state.step_complete)
+    return std::nullopt;
+  if(state.accepted && state.update_norm <= options.minimum_update_norm)
+    return termination::converged_update;
+  if(state.accepted && state.cost_change <= options.minimum_cost_change)
+    return termination::converged_cost;
+  if(!state.accepted && state.rejected_steps >= options.maximum_rejected_steps)
+    return termination::rejection_limit;
+  return std::nullopt;
 }
 
 operation_result<solve_result> solve_native_cpu(
@@ -121,17 +154,14 @@ operation_result<solve_result> solve_native_cpu(
   for(std::size_t iteration = 0; iteration < common.maximum_iterations; ++iteration) {
     const double elapsed = std::chrono::duration<double>(
       std::chrono::steady_clock::now() - started).count();
-    if(elapsed >= common.maximum_seconds) {
-      result.stop = termination::maximum_time;
-      result.solution_usable = true;
-      result.message = "maximum solve time reached";
-      return result;
-    }
     const double gradient_norm = vector_norm(current->gradient);
-    if(gradient_norm <= options.lm.minimum_gradient_norm) {
-      result.stop = termination::converged_gradient;
+    native_termination_state state{
+      elapsed, gradient_norm, 0.0, 0.0, rejected_steps, false, false
+    };
+    if(const auto stop = native_termination(state, common, options.lm)) {
+      result.stop = *stop;
       result.solution_usable = true;
-      result.message = "gradient tolerance reached";
+      result.message = termination_message(*stop);
       return result;
     }
 
@@ -162,25 +192,27 @@ operation_result<solve_result> solve_native_cpu(
       result.registration = current->registration;
       damping = std::max(options.lm.minimum_damping, damping * 0.3333333333333333);
       rejected_steps = 0;
-      if(update_norm <= options.lm.minimum_update_norm) {
-        result.stop = termination::converged_update;
+      state.update_norm = update_norm;
+      state.cost_change = cost_before - cost_after;
+      state.step_complete = true;
+      state.accepted = true;
+      if(const auto stop = native_termination(state, common, options.lm)) {
+        result.stop = *stop;
         result.solution_usable = true;
-        result.message = "update tolerance reached";
-        return result;
-      }
-      if(cost_before - cost_after <= options.lm.minimum_cost_change) {
-        result.stop = termination::converged_cost;
-        result.solution_usable = true;
-        result.message = "cost tolerance reached";
+        result.message = termination_message(*stop);
         return result;
       }
     } else {
       damping = std::min(options.lm.maximum_damping, damping * 10.0);
       ++rejected_steps;
-      if(rejected_steps >= options.lm.maximum_rejected_steps) {
-        result.stop = termination::rejection_limit;
+      state.update_norm = update_norm;
+      state.cost_change = cost_before - cost_after;
+      state.rejected_steps = rejected_steps;
+      state.step_complete = true;
+      if(const auto stop = native_termination(state, common, options.lm)) {
+        result.stop = *stop;
         result.solution_usable = true;
-        result.message = "rejected step limit reached";
+        result.message = termination_message(*stop);
         return result;
       }
     }
