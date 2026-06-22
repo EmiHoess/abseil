@@ -18,7 +18,8 @@ linear_solution solve_sparse_system(
   const topology_index& topology,
   const sparse_system& system,
   double damping,
-  const native_lm_options& options
+  const native_lm_options& options,
+  linear_workspace& workspace
 );
 
 }

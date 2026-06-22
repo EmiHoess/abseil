@@ -81,7 +81,8 @@ linear_solution solve_sparse_system(
   const topology_index& topology,
   const sparse_system& system,
   double damping,
-  const native_lm_options& options
+  const native_lm_options& options,
+  linear_workspace& workspace
 )
 {
   linear_solution result;
@@ -97,7 +98,7 @@ linear_solution solve_sparse_system(
     return result;
   }
 
-  std::vector<std::array<double, 16>> inverse(topology.active_count);
+  workspace.inverse_blocks.resize(topology.active_count);
   for(std::size_t block_index = 0; block_index < topology.active_count; ++block_index) {
     const auto slot = sparse_slot(topology, static_cast<std::int32_t>(block_index),
       static_cast<std::int32_t>(block_index));
@@ -110,32 +111,33 @@ linear_solution solve_sparse_system(
       16, diagonal.data());
     for(std::size_t axis = 0; axis < 4; ++axis)
       diagonal[axis * 4U + axis] += damping;
-    if(!invert_block(diagonal, inverse[block_index])) {
+    if(!invert_block(diagonal, workspace.inverse_blocks[block_index])) {
       result.stop = termination::singular_graph;
       return result;
     }
   }
 
-  std::vector<double> residual(dimension);
-  std::vector<double> preconditioned(dimension);
-  std::vector<double> direction(dimension);
-  std::vector<double> product(dimension);
+  workspace.residual.resize(dimension);
+  workspace.preconditioned.resize(dimension);
+  workspace.direction.resize(dimension);
+  workspace.product.resize(dimension);
   for(std::size_t index = 0; index < dimension; ++index)
-    residual[index] = -system.gradient[index];
+    workspace.residual[index] = -system.gradient[index];
   const auto apply_preconditioner = [&] {
     for(std::size_t block = 0; block < topology.active_count; ++block)
       for(std::size_t row = 0; row < 4; ++row) {
         double value = 0.0;
         for(std::size_t column = 0; column < 4; ++column)
-          value += inverse[block][row * 4U + column] *
-            residual[block * 4U + column];
-        preconditioned[block * 4U + row] = value;
+          value += workspace.inverse_blocks[block][row * 4U + column] *
+            workspace.residual[block * 4U + column];
+        workspace.preconditioned[block * 4U + row] = value;
       }
   };
   apply_preconditioner();
-  direction = preconditioned;
-  double residual_projection = dot(residual, preconditioned);
-  const double initial_norm = std::sqrt(std::max(0.0, dot(residual, residual)));
+  workspace.direction = workspace.preconditioned;
+  double residual_projection = dot(workspace.residual, workspace.preconditioned);
+  const double initial_norm = std::sqrt(std::max(0.0,
+    dot(workspace.residual, workspace.residual)));
   if(initial_norm <= options.pcg_tolerance) {
     result.stop = termination::converged_gradient;
     result.converged = true;
@@ -143,33 +145,35 @@ linear_solution solve_sparse_system(
   }
 
   for(std::size_t iteration = 0; iteration < options.pcg_maximum_iterations; ++iteration) {
-    multiply(system, direction, damping, product);
-    const double denominator = dot(direction, product);
+    multiply(system, workspace.direction, damping, workspace.product);
+    const double denominator = dot(workspace.direction, workspace.product);
     if(!(denominator > 0.0) || !std::isfinite(denominator)) {
       result.stop = termination::numerical_breakdown;
       return result;
     }
     const double alpha = residual_projection / denominator;
     for(std::size_t index = 0; index < dimension; ++index) {
-      result.update[index] += alpha * direction[index];
-      residual[index] -= alpha * product[index];
+      result.update[index] += alpha * workspace.direction[index];
+      workspace.residual[index] -= alpha * workspace.product[index];
     }
     result.iterations = iteration + 1;
-    const double residual_norm = std::sqrt(std::max(0.0, dot(residual, residual)));
+    const double residual_norm = std::sqrt(std::max(0.0,
+      dot(workspace.residual, workspace.residual)));
     if(residual_norm <= options.pcg_tolerance * std::max(1.0, initial_norm)) {
       result.stop = termination::converged_gradient;
       result.converged = true;
       return result;
     }
     apply_preconditioner();
-    const double next_projection = dot(residual, preconditioned);
+    const double next_projection = dot(workspace.residual, workspace.preconditioned);
     if(!std::isfinite(next_projection) || residual_projection == 0.0) {
       result.stop = termination::numerical_breakdown;
       return result;
     }
     const double beta = next_projection / residual_projection;
     for(std::size_t index = 0; index < dimension; ++index)
-      direction[index] = preconditioned[index] + beta * direction[index];
+      workspace.direction[index] = workspace.preconditioned[index] +
+        beta * workspace.direction[index];
     residual_projection = next_projection;
   }
   result.stop = termination::maximum_iterations;

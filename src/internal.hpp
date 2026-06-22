@@ -94,6 +94,14 @@ struct objective_equations {
   std::vector<double> gradient;
 };
 
+struct linear_workspace {
+  std::vector<double> residual;
+  std::vector<double> preconditioned;
+  std::vector<double> direction;
+  std::vector<double> product;
+  std::vector<std::array<double, 16>> inverse_blocks;
+};
+
 struct prepared_problem_access {
   static prepared_problem make(std::shared_ptr<const prepared_storage> storage);
   static const prepared_storage* get(const prepared_problem& value) noexcept;
