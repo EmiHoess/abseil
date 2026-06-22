@@ -88,6 +88,21 @@ std::string termination_message(termination value)
   }
 }
 
+double milliseconds(std::chrono::steady_clock::duration duration)
+{
+  return std::chrono::duration<double, std::milli>(duration).count();
+}
+
+void finish_telemetry(
+  solve_result& result,
+  std::chrono::steady_clock::time_point started
+)
+{
+  result.telemetry.total_ms = milliseconds(std::chrono::steady_clock::now() - started);
+  result.telemetry.implementation = "seil_native_cpu";
+  result.telemetry.device = "host";
+}
+
 }
 
 std::optional<termination> native_termination(
@@ -117,6 +132,7 @@ operation_result<solve_result> solve_native_cpu(
   const native_cpu_options& options
 )
 {
+  const auto total_started = std::chrono::steady_clock::now();
   if(!valid_options(common, options.lm))
     return std::unexpected(option_error("native solver options are invalid"));
   const auto* storage = prepared_problem_access::get(value);
@@ -129,21 +145,26 @@ operation_result<solve_result> solve_native_cpu(
   for(const auto& node : storage->value.nodes)
     result.poses.push_back(node.initial);
 
+  const auto evaluation_started = std::chrono::steady_clock::now();
   auto current = build_sparse_system(*storage, result.poses);
   if(!current)
     return std::unexpected(std::move(current.error()));
   result.initial_cost = current->cost;
   result.final_cost = current->cost;
   result.registration = current->registration;
+  result.telemetry.evaluation_ms += milliseconds(
+    std::chrono::steady_clock::now() - evaluation_started);
   if(storage->topology.active_count == 0) {
     result.stop = termination::no_free_nodes;
     result.solution_usable = true;
     result.message = "problem has no free nodes";
+    finish_telemetry(result, total_started);
     return result;
   }
   if(storage->topology.unanchored_components != 0) {
     result.stop = termination::singular_graph;
     result.message = "pose graph has an unanchored component";
+    finish_telemetry(result, total_started);
     return result;
   }
 
@@ -152,6 +173,7 @@ operation_result<solve_result> solve_native_cpu(
   double damping = options.lm.initial_damping;
   std::size_t rejected_steps = 0;
   for(std::size_t iteration = 0; iteration < common.maximum_iterations; ++iteration) {
+    const auto iteration_started = std::chrono::steady_clock::now();
     const double elapsed = std::chrono::duration<double>(
       std::chrono::steady_clock::now() - started).count();
     const double gradient_norm = vector_norm(current->gradient);
@@ -162,29 +184,44 @@ operation_result<solve_result> solve_native_cpu(
       result.stop = *stop;
       result.solution_usable = true;
       result.message = termination_message(*stop);
+      finish_telemetry(result, total_started);
       return result;
     }
 
+    const auto linear_started = std::chrono::steady_clock::now();
     linear_solution step = solve_sparse_system(
       storage->topology, *current, damping, options.lm, workspace);
+    const double linear_seconds = std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - linear_started).count();
+    result.telemetry.linear_solver_ms += linear_seconds * 1000.0;
     if(!step.converged) {
       result.stop = step.stop;
       result.message = "linear solve failed";
+      finish_telemetry(result, total_started);
       return result;
     }
     std::vector<pose4> candidate = result.poses;
+    const auto update_started = std::chrono::steady_clock::now();
     const double update_norm = apply_update(
       storage->topology, options.lm, step.update, candidate);
+    result.telemetry.update_ms += milliseconds(
+      std::chrono::steady_clock::now() - update_started);
     if(!std::isfinite(update_norm)) {
       result.stop = termination::numerical_breakdown;
       result.message = "pose update is not finite";
+      finish_telemetry(result, total_started);
       return result;
     }
+    const auto candidate_started = std::chrono::steady_clock::now();
     auto candidate_equations = build_sparse_system(*storage, candidate);
     if(!candidate_equations)
       return std::unexpected(std::move(candidate_equations.error()));
     const double cost_before = current->cost.total();
     const double cost_after = candidate_equations->cost.total();
+    result.telemetry.evaluation_ms += milliseconds(
+      std::chrono::steady_clock::now() - candidate_started);
+    const double iteration_damping = damping;
+    const bool accepted = cost_after < cost_before;
     if(cost_after < cost_before) {
       result.poses = std::move(candidate);
       current = std::move(candidate_equations);
@@ -192,34 +229,54 @@ operation_result<solve_result> solve_native_cpu(
       result.registration = current->registration;
       damping = std::max(options.lm.minimum_damping, damping * 0.3333333333333333);
       rejected_steps = 0;
+      ++result.telemetry.accepted_steps;
       state.update_norm = update_norm;
       state.cost_change = cost_before - cost_after;
       state.step_complete = true;
       state.accepted = true;
       if(const auto stop = native_termination(state, common, options.lm)) {
+        result.iterations.push_back({iteration, step.iterations, true,
+          cost_before, cost_after, iteration_damping,
+          1.0 / std::sqrt(iteration_damping), gradient_norm, update_norm,
+          std::chrono::duration<double>(std::chrono::steady_clock::now() -
+            iteration_started).count(), linear_seconds});
         result.stop = *stop;
         result.solution_usable = true;
         result.message = termination_message(*stop);
+        finish_telemetry(result, total_started);
         return result;
       }
     } else {
       damping = std::min(options.lm.maximum_damping, damping * 10.0);
       ++rejected_steps;
+      ++result.telemetry.rejected_steps;
       state.update_norm = update_norm;
       state.cost_change = cost_before - cost_after;
       state.rejected_steps = rejected_steps;
       state.step_complete = true;
       if(const auto stop = native_termination(state, common, options.lm)) {
+        result.iterations.push_back({iteration, step.iterations, false,
+          cost_before, cost_after, iteration_damping,
+          1.0 / std::sqrt(iteration_damping), gradient_norm, update_norm,
+          std::chrono::duration<double>(std::chrono::steady_clock::now() -
+            iteration_started).count(), linear_seconds});
         result.stop = *stop;
         result.solution_usable = true;
         result.message = termination_message(*stop);
+        finish_telemetry(result, total_started);
         return result;
       }
     }
+    result.iterations.push_back({iteration, step.iterations, accepted,
+      cost_before, cost_after, iteration_damping,
+      1.0 / std::sqrt(iteration_damping), gradient_norm, update_norm,
+      std::chrono::duration<double>(std::chrono::steady_clock::now() -
+        iteration_started).count(), linear_seconds});
   }
   result.stop = termination::maximum_iterations;
   result.solution_usable = true;
   result.message = "maximum iteration count reached";
+  finish_telemetry(result, total_started);
   return result;
 }
 

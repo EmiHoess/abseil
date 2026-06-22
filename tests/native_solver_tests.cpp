@@ -38,6 +38,15 @@ int main()
   require(std::abs(solved->poses[1].x - 1.0) < 1.0e-4 &&
     std::abs(solved->poses[1].y) < 1.0e-4,
     "native pose optimized");
+  require(!solved->iterations.empty() && solved->telemetry.accepted_steps > 0 &&
+    solved->telemetry.accepted_steps + solved->telemetry.rejected_steps ==
+      solved->iterations.size(), "native iteration telemetry");
+  require(solved->telemetry.total_ms > 0.0 &&
+    solved->telemetry.implementation == "seil_native_cpu" &&
+    solved->telemetry.device == "host", "native stage telemetry");
+  require(solved->iterations.front().linear_solver_seconds >= 0.0 &&
+    solved->iterations.front().iteration_seconds >= 0.0,
+    "native timing telemetry");
 
   problem = chain(false);
   solved = seil::detail::solve_native_cpu(problem, {}, {});

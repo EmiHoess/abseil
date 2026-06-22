@@ -126,6 +126,8 @@ struct solver_telemetry {
   std::uint64_t device_to_host_bytes{};
   std::uint64_t peak_device_bytes{};
   std::uint64_t synchronization_count{};
+  std::uint64_t accepted_steps{};
+  std::uint64_t rejected_steps{};
   std::string implementation;
   std::string device;
 };
