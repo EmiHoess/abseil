@@ -16,6 +16,7 @@ add_library(seil STATIC
   src/field.cpp
   src/geometry.cpp
   src/linear_solver.cpp
+  src/native_solver.cpp
   src/objective.cpp
   src/problem.cpp
   src/sparse_system.cpp
@@ -63,6 +64,10 @@ if(BUILD_TESTING)
   add_executable(seil_linear_solver_tests tests/linear_solver_tests.cpp)
   target_link_libraries(seil_linear_solver_tests PRIVATE seil::seil)
   add_test(NAME seil_linear_solver_tests COMMAND seil_linear_solver_tests)
+
+  add_executable(seil_native_solver_tests tests/native_solver_tests.cpp)
+  target_link_libraries(seil_native_solver_tests PRIVATE seil::seil)
+  add_test(NAME seil_native_solver_tests COMMAND seil_native_solver_tests)
 endif()
 
 set(seil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/seil")

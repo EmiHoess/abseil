@@ -150,5 +150,10 @@ std::int32_t sparse_slot(
   std::int32_t row,
   std::int32_t column
 ) noexcept;
+operation_result<solve_result> solve_native_cpu(
+  const prepared_problem& value,
+  const common_options& common,
+  const native_cpu_options& options
+);
 
 }
