@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -157,5 +158,11 @@ operation_result<solve_result> solve(
   const prepared_problem& value,
   const solve_options& options
 );
+
+operation_result<backend> parse_backend(std::string_view name);
+std::string_view backend_name(backend value) noexcept;
+std::string_view termination_name(termination value) noexcept;
+bool backend_available(backend value) noexcept;
+std::vector<backend> available_backends();
 
 }

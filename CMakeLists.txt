@@ -13,6 +13,9 @@ option(seil_enable_ceres "Build the Ceres CPU backend" OFF)
 option(seil_enable_cuda "Build the cold-snapshot CUDA backend" OFF)
 
 add_library(seil STATIC
+  src/backend_dispatch.cpp
+  src/ceres_stub.cpp
+  src/cuda_stub.cpp
   src/field.cpp
   src/geometry.cpp
   src/linear_solver.cpp
@@ -68,6 +71,10 @@ if(BUILD_TESTING)
   add_executable(seil_native_solver_tests tests/native_solver_tests.cpp)
   target_link_libraries(seil_native_solver_tests PRIVATE seil::seil)
   add_test(NAME seil_native_solver_tests COMMAND seil_native_solver_tests)
+
+  add_executable(seil_backend_dispatch_tests tests/backend_dispatch_tests.cpp)
+  target_link_libraries(seil_backend_dispatch_tests PRIVATE seil::seil)
+  add_test(NAME seil_backend_dispatch_tests COMMAND seil_backend_dispatch_tests)
 endif()
 
 set(seil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/seil")

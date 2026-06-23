@@ -166,6 +166,16 @@ operation_result<solve_result> solve_native_cpu(
   const common_options& common,
   const native_cpu_options& options
 );
+operation_result<solve_result> solve_ceres_cpu(
+  const prepared_problem& value,
+  const common_options& common,
+  const ceres_cpu_options& options
+);
+operation_result<solve_result> solve_native_cuda_cold(
+  const prepared_problem& value,
+  const common_options& common,
+  const native_cuda_cold_options& options
+);
 std::optional<termination> native_termination(
   const native_termination_state& state,
   const common_options& common,
