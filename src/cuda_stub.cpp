@@ -2,6 +2,11 @@
 
 namespace seil::detail {
 
+bool cuda_backend_available() noexcept
+{
+  return false;
+}
+
 operation_result<solve_result> solve_native_cuda_cold(
   const prepared_problem&,
   const common_options&,

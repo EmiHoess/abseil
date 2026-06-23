@@ -56,7 +56,12 @@ std::string_view termination_name(termination value) noexcept
 
 bool backend_available(backend value) noexcept
 {
-  return value == backend::native_cpu;
+  switch(value) {
+    case backend::native_cpu: return true;
+    case backend::ceres_cpu: return detail::ceres_backend_available();
+    case backend::native_cuda_cold: return detail::cuda_backend_available();
+  }
+  return false;
 }
 
 std::vector<backend> available_backends()

@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.25)
 
 project(seil VERSION 0.1.0 LANGUAGES CXX)
 
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-
 include(CTest)
 include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
@@ -12,9 +10,15 @@ option(seil_build_benchmarks "Build the seil benchmark executable" OFF)
 option(seil_enable_ceres "Build the Ceres CPU backend" OFF)
 option(seil_enable_cuda "Build the cold-snapshot CUDA backend" OFF)
 
+if(MSVC AND seil_enable_ceres)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+  add_compile_definitions(_ITERATOR_DEBUG_LEVEL=0)
+else()
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 add_library(seil STATIC
   src/backend_dispatch.cpp
-  src/ceres_stub.cpp
   src/cuda_stub.cpp
   src/field.cpp
   src/geometry.cpp
@@ -25,6 +29,15 @@ add_library(seil STATIC
   src/sparse_system.cpp
 )
 add_library(seil::seil ALIAS seil)
+
+if(seil_enable_ceres)
+  find_package(Ceres CONFIG REQUIRED)
+  target_sources(seil PRIVATE src/ceres_backend.cpp)
+  target_link_libraries(seil PUBLIC Ceres::ceres)
+  target_compile_definitions(seil PRIVATE SEIL_HAS_CERES=1)
+else()
+  target_sources(seil PRIVATE src/ceres_stub.cpp)
+endif()
 
 target_compile_features(seil PUBLIC cxx_std_23)
 target_include_directories(seil
@@ -75,6 +88,10 @@ if(BUILD_TESTING)
   add_executable(seil_backend_dispatch_tests tests/backend_dispatch_tests.cpp)
   target_link_libraries(seil_backend_dispatch_tests PRIVATE seil::seil)
   add_test(NAME seil_backend_dispatch_tests COMMAND seil_backend_dispatch_tests)
+
+  add_executable(seil_backend_parity_tests tests/backend_parity_tests.cpp)
+  target_link_libraries(seil_backend_parity_tests PRIVATE seil::seil)
+  add_test(NAME seil_backend_parity_tests COMMAND seil_backend_parity_tests)
 endif()
 
 set(seil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/seil")

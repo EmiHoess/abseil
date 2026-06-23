@@ -1,5 +1,6 @@
 #include <seil/solver.hpp>
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 
@@ -35,8 +36,12 @@ int main()
     "native_cuda_cold", "backend name");
   require(seil::termination_name(seil::termination::converged_cost) ==
     "converged_cost", "termination name");
-  require(seil::available_backends() == std::vector{seil::backend::native_cpu},
-    "available backend enumeration");
+  const auto available = seil::available_backends();
+  require(!available.empty() && available.front() == seil::backend::native_cpu,
+    "native backend enumeration");
+  require((std::find(available.begin(), available.end(), seil::backend::ceres_cpu) !=
+    available.end()) == seil::backend_available(seil::backend::ceres_cpu),
+    "optional backend enumeration");
 
   const auto prepared = graph();
   auto solved = seil::solve(prepared, {});
@@ -49,6 +54,9 @@ int main()
   unavailable.selected_backend = seil::backend::ceres_cpu;
   unavailable.specific = seil::ceres_cpu_options{};
   auto result = seil::solve(prepared, unavailable);
-  require(!result && result.error().code == seil::operation_code::backend_unavailable,
-    "unavailable backend error");
+  if(seil::backend_available(seil::backend::ceres_cpu))
+    require(result.has_value(), "available optional backend dispatch");
+  else
+    require(!result && result.error().code == seil::operation_code::backend_unavailable,
+      "unavailable backend error");
 }
