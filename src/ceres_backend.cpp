@@ -1,5 +1,7 @@
 #include "internal.hpp"
 
+#include <seil/objective.hpp>
+
 #include <ceres/ceres.h>
 #include <ceres/version.h>
 
@@ -263,7 +265,7 @@ operation_result<solve_result> solve_ceres_cpu(
   result.poses.reserve(storage->value.nodes.size());
   for(const auto& node : storage->value.nodes)
     result.poses.push_back(node.initial);
-  auto initial = assemble_objective(*storage, result.poses, false);
+  auto initial = evaluate(prepared, result.poses);
   if(!initial)
     return std::unexpected(std::move(initial.error()));
   result.initial_cost = initial->cost;
@@ -351,7 +353,7 @@ operation_result<solve_result> solve_ceres_cpu(
         parameters[index][0], parameters[index][1], parameters[index][2],
         wrap_yaw(parameters[index][3])
       };
-  auto final = assemble_objective(*storage, result.poses, false);
+  auto final = evaluate(prepared, result.poses);
   if(!final)
     return std::unexpected(std::move(final.error()));
   result.final_cost = final->cost;
