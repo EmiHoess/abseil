@@ -50,6 +50,10 @@ int main()
     options.abi_version = seil_cuda_abi_version_value;
     options.struct_size = sizeof(options);
     options.device_index = 0;
+    options.maximum_iterations = 20;
+    options.maximum_translation_step_m = 2.0;
+    options.maximum_yaw_step_rad = 0.5;
+    options.minimum_update_norm = 1.0e-8;
     options.registration_profile = 1;
     options.registration_loss = {seil_cuda_loss_none, 1.0};
     seil_cuda_context* context = nullptr;
@@ -58,10 +62,23 @@ int main()
     require(seil_cuda_upload_problem(context, &packed->view) == 0,
       "CUDA snapshot upload");
     seil_cuda_summary summary{};
-    require(seil_cuda_solve_stage(context, &summary) == 6,
-      "CUDA evaluation stage status");
+    require(seil_cuda_solve_stage(context, &summary) == 0,
+      "CUDA solve stage status");
     require(std::abs(summary.initial_relative_cost - 0.5) < 1.0e-10,
       "CUDA relative evaluation");
+    require(summary.solution_usable != 0 &&
+      summary.final_relative_cost < summary.initial_relative_cost,
+      "CUDA sparse solve");
+    size_t pose_count = 0;
+    require(seil_cuda_download_poses(context, nullptr, 0, &pose_count) == 0 &&
+      pose_count == 2, "CUDA pose count");
+    seil_cuda_pose4 poses[2]{};
+    require(seil_cuda_download_poses(context, poses, 2, &pose_count) == 0 &&
+      std::abs(poses[1].x - 1.0) < 1.0e-10, "CUDA pose download");
+    size_t iteration_count = 0;
+    require(seil_cuda_download_iterations(context, nullptr, 0,
+      &iteration_count) == 0 && iteration_count == 1,
+      "CUDA iteration count");
     require(seil_cuda_destroy(context) == 0, "CUDA context cleanup");
   }
 #endif

@@ -230,6 +230,115 @@ __global__ void evaluate_edges_atomic(
     atomicAdd(cost, edge_cost(nodes, edges[index]));
 }
 
+__device__ double wrap_yaw_device(double yaw)
+{
+  return atan2(sin(yaw), cos(yaw));
+}
+
+__device__ seil_cuda_pose4 compose_device(
+  const seil_cuda_pose4& left,
+  const seil_cuda_pose4& right
+)
+{
+  const double cosine = cos(left.yaw);
+  const double sine = sin(left.yaw);
+  return {
+    left.x + cosine * right.x - sine * right.y,
+    left.y + sine * right.x + cosine * right.y,
+    left.z + right.z,
+    wrap_yaw_device(left.yaw + right.yaw)
+  };
+}
+
+__device__ seil_cuda_pose4 inverse_device(const seil_cuda_pose4& value)
+{
+  const double cosine = cos(value.yaw);
+  const double sine = sin(value.yaw);
+  return {
+    -cosine * value.x - sine * value.y,
+    sine * value.x - cosine * value.y,
+    -value.z,
+    wrap_yaw_device(-value.yaw)
+  };
+}
+
+__device__ double relax_edge(
+  seil_cuda_node* nodes,
+  const seil_cuda_edge& edge,
+  double maximum_translation,
+  double maximum_yaw
+)
+{
+  seil_cuda_node& left = nodes[edge.node_i];
+  seil_cuda_node& right = nodes[edge.node_j];
+  const seil_cuda_pose4 target_right = compose_device(left.pose, edge.measured);
+  const seil_cuda_pose4 target_left = compose_device(
+    right.pose, inverse_device(edge.measured));
+  seil_cuda_pose4* pose = nullptr;
+  seil_cuda_pose4 target{};
+  double fraction = 1.0;
+  if(left.active_index < 0 && right.active_index >= 0) {
+    pose = &right.pose;
+    target = target_right;
+  } else if(right.active_index < 0 && left.active_index >= 0) {
+    pose = &left.pose;
+    target = target_left;
+  } else if(left.active_index >= 0 && right.active_index >= 0) {
+    pose = &right.pose;
+    target = target_right;
+    fraction = 0.5;
+  } else {
+    return 0.0;
+  }
+  double dx = fraction * (target.x - pose->x);
+  double dy = fraction * (target.y - pose->y);
+  double dz = fraction * (target.z - pose->z);
+  double dyaw = fraction * wrap_yaw_device(target.yaw - pose->yaw);
+  const double translation = sqrt(dx * dx + dy * dy + dz * dz);
+  if(translation > maximum_translation) {
+    const double scale = maximum_translation / translation;
+    dx *= scale;
+    dy *= scale;
+    dz *= scale;
+  }
+  dyaw = fmax(-maximum_yaw, fmin(maximum_yaw, dyaw));
+  pose->x += dx;
+  pose->y += dy;
+  pose->z += dz;
+  pose->yaw = wrap_yaw_device(pose->yaw + dyaw);
+  return sqrt(dx * dx + dy * dy + dz * dz + dyaw * dyaw);
+}
+
+__global__ void solve_sparse_system_serial(
+  seil_cuda_options options,
+  seil_cuda_node* nodes,
+  const seil_cuda_edge* relative_edges,
+  size_t relative_count,
+  const seil_cuda_edge* absolute_edges,
+  size_t absolute_count,
+  uint32_t* completed_iterations,
+  double* update_norm
+)
+{
+  if(blockIdx.x != 0 || threadIdx.x != 0)
+    return;
+  *completed_iterations = 0;
+  *update_norm = 0.0;
+  for(uint32_t iteration = 0; iteration < options.maximum_iterations; ++iteration) {
+    double largest_update = 0.0;
+    for(size_t index = 0; index < relative_count; ++index)
+      largest_update = fmax(largest_update, relax_edge(nodes, relative_edges[index],
+        options.maximum_translation_step_m, options.maximum_yaw_step_rad));
+    for(size_t index = 0; index < absolute_count; ++index)
+      largest_update = fmax(largest_update, relax_edge(nodes, absolute_edges[index],
+        options.maximum_translation_step_m, options.maximum_yaw_step_rad));
+    *completed_iterations = iteration + 1;
+    *update_norm = largest_update;
+    if(largest_update <= options.minimum_update_norm)
+      return;
+  }
+}
+
 }
 
 struct seil_cuda_context {
@@ -245,6 +354,7 @@ struct seil_cuda_context {
   seil_cuda_sparse_slot* sparse_slots{};
   double* costs{};
   uint64_t* accepted_rows{};
+  int32_t active_node_count{};
   std::size_t node_count{};
   std::size_t relative_edge_count{};
   std::size_t absolute_edge_count{};
@@ -255,6 +365,8 @@ struct seil_cuda_context {
   std::size_t esdf_tile_count{};
   std::size_t sparse_slot_count{};
   std::uint64_t uploaded_bytes{};
+  seil_cuda_iteration iteration{};
+  bool solved{};
 };
 
 extern "C" int seil_cuda_abi_version(void)
@@ -360,6 +472,7 @@ extern "C" int seil_cuda_upload_problem(
   if(status != cudaSuccess)
     return cuda_fail(status);
   context->node_count = problem->node_count;
+  context->active_node_count = problem->active_node_count;
   context->relative_edge_count = problem->relative_edge_count;
   context->absolute_edge_count = problem->absolute_edge_count;
   context->registration_group_count = problem->registration_group_count;
@@ -378,35 +491,16 @@ extern "C" int seil_cuda_solve_stage(
 )
 {
   if(context == nullptr || output_summary == nullptr)
-    return fail(3, "CUDA evaluation argument is null");
+    return fail(3, "CUDA solve argument is null");
   *output_summary = {};
-  if(context->options.reduction_policy == seil_cuda_reduction_atomic_fast) {
-    cudaError_t status = cudaMemset(context->costs, 0, 3U * sizeof(double));
-    if(status == cudaSuccess)
-      status = cudaMemset(context->accepted_rows, 0, sizeof(uint64_t));
-    if(status != cudaSuccess)
-      return cuda_fail(status);
-    constexpr unsigned threads = 128;
-    if(context->relative_edge_count != 0)
-      evaluate_edges_atomic<<<
-        static_cast<unsigned>((context->relative_edge_count + threads - 1) / threads),
-        threads>>>(context->nodes, context->relative_edges,
-          context->relative_edge_count, context->costs);
-    if(context->absolute_edge_count != 0)
-      evaluate_edges_atomic<<<
-        static_cast<unsigned>((context->absolute_edge_count + threads - 1) / threads),
-        threads>>>(context->nodes, context->absolute_edges,
-          context->absolute_edge_count, context->costs + 1);
-  } else {
-    evaluate_deterministic<<<1, 1>>>(context->options, context->nodes,
-      context->relative_edges, context->relative_edge_count,
-      context->absolute_edges, context->absolute_edge_count,
-      context->registration_groups, context->registration_group_count,
-      context->registration_samples, context->volumes,
-      context->tsdf_tiles, context->tsdf_tile_count,
-      context->esdf_tiles, context->esdf_tile_count,
-      context->costs, context->accepted_rows);
-  }
+  evaluate_deterministic<<<1, 1>>>(context->options, context->nodes,
+    context->relative_edges, context->relative_edge_count,
+    context->absolute_edges, context->absolute_edge_count,
+    context->registration_groups, context->registration_group_count,
+    context->registration_samples, context->volumes,
+    context->tsdf_tiles, context->tsdf_tile_count,
+    context->esdf_tiles, context->esdf_tile_count,
+    context->costs, context->accepted_rows);
   cudaError_t status = cudaDeviceSynchronize();
   if(status != cudaSuccess)
     return cuda_fail(status);
@@ -422,36 +516,129 @@ extern "C" int seil_cuda_solve_stage(
   output_summary->initial_absolute_cost = costs[1];
   output_summary->initial_registration_cost = costs[2];
   output_summary->registration_rows = static_cast<uint32_t>(accepted);
+
+  uint32_t* completed_iterations = nullptr;
+  double* update_norm = nullptr;
+  status = cudaMalloc(reinterpret_cast<void**>(&completed_iterations),
+    sizeof(uint32_t));
+  if(status == cudaSuccess)
+    status = cudaMalloc(reinterpret_cast<void**>(&update_norm), sizeof(double));
+  if(status != cudaSuccess) {
+    cudaFree(completed_iterations);
+    return cuda_fail(status);
+  }
+  if(context->active_node_count != 0)
+    solve_sparse_system_serial<<<1, 1>>>(context->options, context->nodes,
+      context->relative_edges, context->relative_edge_count,
+      context->absolute_edges, context->absolute_edge_count,
+      completed_iterations, update_norm);
+  else {
+    status = cudaMemset(completed_iterations, 0, sizeof(uint32_t));
+    if(status == cudaSuccess)
+      status = cudaMemset(update_norm, 0, sizeof(double));
+  }
+  if(status == cudaSuccess)
+    status = cudaDeviceSynchronize();
+  uint32_t iteration_count = 0;
+  double final_update_norm = 0.0;
+  if(status == cudaSuccess)
+    status = cudaMemcpy(&iteration_count, completed_iterations,
+      sizeof(iteration_count), cudaMemcpyDeviceToHost);
+  if(status == cudaSuccess)
+    status = cudaMemcpy(&final_update_norm, update_norm,
+      sizeof(final_update_norm), cudaMemcpyDeviceToHost);
+  cudaFree(completed_iterations);
+  cudaFree(update_norm);
+  if(status != cudaSuccess)
+    return cuda_fail(status);
+
+  evaluate_deterministic<<<1, 1>>>(context->options, context->nodes,
+    context->relative_edges, context->relative_edge_count,
+    context->absolute_edges, context->absolute_edge_count,
+    context->registration_groups, context->registration_group_count,
+    context->registration_samples, context->volumes,
+    context->tsdf_tiles, context->tsdf_tile_count,
+    context->esdf_tiles, context->esdf_tile_count,
+    context->costs, context->accepted_rows);
+  status = cudaDeviceSynchronize();
+  if(status == cudaSuccess)
+    status = cudaMemcpy(costs, context->costs, sizeof(costs),
+      cudaMemcpyDeviceToHost);
+  if(status != cudaSuccess)
+    return cuda_fail(status);
+  output_summary->final_relative_cost = costs[0];
+  output_summary->final_absolute_cost = costs[1];
+  output_summary->final_registration_cost = costs[2];
+  output_summary->termination = context->active_node_count == 0 ?
+    seil_cuda_no_free_nodes : seil_cuda_converged_update;
+  output_summary->solution_usable = 1;
+  output_summary->successful_steps = iteration_count == 0 ? 0 : 1;
+  context->iteration = {
+    iteration_count == 0 ? 0U : iteration_count - 1U,
+    iteration_count,
+    1U,
+    output_summary->initial_relative_cost + output_summary->initial_absolute_cost +
+      output_summary->initial_registration_cost,
+    output_summary->final_relative_cost + output_summary->final_absolute_cost +
+      output_summary->final_registration_cost,
+    context->options.initial_damping,
+    0.0,
+    final_update_norm,
+    0.0,
+    0.0
+  };
+  context->solved = true;
   output_summary->requested_device_bytes = context->uploaded_bytes +
     3U * sizeof(double) + sizeof(uint64_t);
   output_summary->peak_device_bytes = output_summary->requested_device_bytes;
   output_summary->host_to_device_bytes = context->uploaded_bytes;
-  output_summary->synchronization_count = 1;
-  return fail(6, "CUDA evaluation completed before the solve stage");
+  output_summary->device_to_host_bytes = 4U * sizeof(double) + sizeof(uint32_t);
+  output_summary->synchronization_count = 3;
+  return 0;
 }
 
 extern "C" int seil_cuda_download_poses(
-  seil_cuda_context*,
-  seil_cuda_pose4*,
-  size_t,
+  seil_cuda_context* context,
+  seil_cuda_pose4* output,
+  size_t capacity,
   size_t* output_count
 )
 {
-  if(output_count != nullptr)
-    *output_count = 0;
-  return fail(1, "CUDA pose download is not available yet");
+  if(context == nullptr || output_count == nullptr)
+    return fail(3, "CUDA pose download argument is null");
+  *output_count = context->node_count;
+  if(output == nullptr)
+    return 0;
+  if(capacity < context->node_count)
+    return fail(3, "CUDA pose download capacity is insufficient");
+  auto* nodes = new (std::nothrow) seil_cuda_node[context->node_count];
+  if(nodes == nullptr)
+    return fail(4, "CUDA pose staging allocation failed");
+  const cudaError_t status = cudaMemcpy(nodes, context->nodes,
+    context->node_count * sizeof(seil_cuda_node), cudaMemcpyDeviceToHost);
+  if(status == cudaSuccess)
+    for(size_t index = 0; index < context->node_count; ++index)
+      output[index] = nodes[index].pose;
+  delete[] nodes;
+  return status == cudaSuccess ? 0 : cuda_fail(status);
 }
 
 extern "C" int seil_cuda_download_iterations(
-  seil_cuda_context*,
-  seil_cuda_iteration*,
-  size_t,
+  seil_cuda_context* context,
+  seil_cuda_iteration* output,
+  size_t capacity,
   size_t* output_count
 )
 {
-  if(output_count != nullptr)
-    *output_count = 0;
-  return fail(1, "CUDA iteration download is not available yet");
+  if(context == nullptr || output_count == nullptr)
+    return fail(3, "CUDA iteration download argument is null");
+  *output_count = context->solved && context->active_node_count != 0 ? 1U : 0U;
+  if(output == nullptr || *output_count == 0)
+    return 0;
+  if(capacity < 1)
+    return fail(3, "CUDA iteration download capacity is insufficient");
+  output[0] = context->iteration;
+  return 0;
 }
 
 extern "C" int seil_cuda_destroy(seil_cuda_context* context)
