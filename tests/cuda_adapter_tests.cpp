@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 
 namespace {
 
@@ -28,6 +29,14 @@ int main()
   auto prepared = seil::prepare(std::move(graph));
   require(prepared.has_value(), "CUDA adapter graph preparation");
 #if defined(SEIL_HAS_CUDA)
+  require(seil::detail::cuda_packing::index(42) == 42,
+    "CUDA checked index");
+  require(!seil::detail::cuda_packing::index(
+    static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) + 1U),
+    "CUDA index overflow");
+  require(!seil::detail::cuda_packing::add_bytes(
+    std::numeric_limits<std::uint64_t>::max(), 1, 1),
+    "CUDA byte overflow");
   auto packed = seil::detail::pack_cuda_problem(*prepared);
   require(packed.has_value() && packed->nodes.size() == 2 &&
     packed->relative_edges.size() == 1 && packed->byte_count > 0,

@@ -33,6 +33,16 @@ struct cuda_call_result {
 
 constexpr std::uint32_t cuda_abi_version = seil_cuda_abi_version_value;
 
+struct cuda_packing {
+  static operation_result<std::int32_t> index(std::size_t value);
+  static operation_result<std::uint32_t> count(std::size_t value);
+  static operation_result<std::uint64_t> add_bytes(
+    std::uint64_t total,
+    std::size_t count,
+    std::size_t element_size
+  );
+};
+
 struct packed_cuda_problem {
   std::vector<seil_cuda_node> nodes;
   std::vector<seil_cuda_edge> relative_edges;

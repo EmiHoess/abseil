@@ -2,6 +2,7 @@
 #include "internal.hpp"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 
 namespace seil::detail {
@@ -11,13 +12,6 @@ operation_error packing_error(std::string message)
 {
   return {operation_code::invalid_problem, operation_stage::upload, 0,
     std::move(message)};
-}
-
-operation_result<std::int32_t> narrow_index(std::size_t value)
-{
-  if(value > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
-    return std::unexpected(packing_error("CUDA snapshot index exceeds int32 range"));
-  return static_cast<std::int32_t>(value);
 }
 
 seil_cuda_loss pack_loss(const loss& value)
@@ -39,8 +33,8 @@ operation_result<seil_cuda_edge> pack_edge(
   const loss& robust_loss
 )
 {
-  auto left = narrow_index(node_i);
-  auto right = narrow_index(node_j);
+  auto left = cuda_packing::index(node_i);
+  auto right = cuda_packing::index(node_j);
   if(!left)
     return std::unexpected(std::move(left.error()));
   if(!right)
@@ -62,12 +56,35 @@ operation_result<seil_cuda_edge> pack_edge(
   return output;
 }
 
-template<class value_type>
-std::uint64_t bytes(const std::vector<value_type>& values)
-{
-  return static_cast<std::uint64_t>(values.size()) * sizeof(value_type);
 }
 
+operation_result<std::int32_t> cuda_packing::index(std::size_t value)
+{
+  if(value > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
+    return std::unexpected(packing_error("CUDA snapshot index exceeds int32 range"));
+  return static_cast<std::int32_t>(value);
+}
+
+operation_result<std::uint32_t> cuda_packing::count(std::size_t value)
+{
+  if(value > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()))
+    return std::unexpected(packing_error("CUDA snapshot count exceeds uint32 range"));
+  return static_cast<std::uint32_t>(value);
+}
+
+operation_result<std::uint64_t> cuda_packing::add_bytes(
+  std::uint64_t total,
+  std::size_t count_value,
+  std::size_t element_size
+)
+{
+  if(count_value != 0 && element_size >
+    std::numeric_limits<std::uint64_t>::max() / count_value)
+    return std::unexpected(packing_error("CUDA snapshot byte count overflows"));
+  const std::uint64_t addition = static_cast<std::uint64_t>(count_value) * element_size;
+  if(total > std::numeric_limits<std::uint64_t>::max() - addition)
+    return std::unexpected(packing_error("CUDA snapshot byte count overflows"));
+  return total + addition;
 }
 
 operation_result<packed_cuda_problem> pack_cuda_problem(
@@ -100,11 +117,14 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
     output.absolute_edges.push_back(*edge);
   }
   for(const auto& group : storage->value.registration_groups) {
-    auto node_i = narrow_index(group.node_i);
-    auto node_j = narrow_index(group.node_j);
-    auto volume_i = narrow_index(group.volume_i);
-    auto volume_j = narrow_index(group.volume_j);
-    if(!node_i || !node_j || !volume_i || !volume_j)
+    auto node_i = cuda_packing::index(group.node_i);
+    auto node_j = cuda_packing::index(group.node_j);
+    auto volume_i = cuda_packing::index(group.volume_i);
+    auto volume_j = cuda_packing::index(group.volume_j);
+    auto sample_begin = cuda_packing::count(group.sample_begin);
+    auto sample_count = cuda_packing::count(group.sample_count);
+    if(!node_i || !node_j || !volume_i || !volume_j ||
+      !sample_begin || !sample_count)
       return std::unexpected(packing_error("CUDA registration index exceeds int32 range"));
     const auto active_i = storage->topology.active_node[group.node_i];
     const auto active_j = storage->topology.active_node[group.node_j];
@@ -115,29 +135,40 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
       sparse_slot(storage->topology, active_j, active_j),
       active_i > active_j ? 1U : 0U,
       static_cast<std::uint32_t>(group.field),
-      static_cast<std::uint32_t>(group.sample_begin),
-      static_cast<std::uint32_t>(group.sample_count),
+      *sample_begin,
+      *sample_count,
       group.direction_weight
     });
   }
-  for(const auto& sample : storage->value.registration_samples)
+  for(const auto& sample : storage->value.registration_samples) {
+    auto group = cuda_packing::count(sample.group);
+    if(!group)
+      return std::unexpected(std::move(group.error()));
     output.registration_samples.push_back({
-      static_cast<std::uint32_t>(sample.group),
+      *group,
       sample.reference_local_point.x,
       sample.reference_local_point.y,
       sample.reference_local_point.z,
       sample.reference_distance,
       sample.reference_tsdf_weight
     });
-  for(const auto& volume : storage->value.volumes)
+  }
+  for(const auto& volume : storage->value.volumes) {
+    auto node = cuda_packing::index(volume.pose_node);
+    if(!node)
+      return std::unexpected(std::move(node.error()));
     output.volumes.push_back({
-      *narrow_index(volume.pose_node), volume.voxel_size,
+      *node, volume.voxel_size,
       volume.has_tsdf ? 1U : 0U, volume.has_esdf ? 1U : 0U
     });
+  }
   output.tsdf_tiles.reserve(storage->value.tsdf_tiles.size());
   for(const auto& tile : storage->value.tsdf_tiles) {
     seil_cuda_tsdf_tile packed{};
-    packed.volume_index = *narrow_index(tile.volume);
+    auto volume = cuda_packing::index(tile.volume);
+    if(!volume)
+      return std::unexpected(std::move(volume.error()));
+    packed.volume_index = *volume;
     packed.x = tile.x;
     packed.y = tile.y;
     packed.z = tile.z;
@@ -149,7 +180,10 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
   output.esdf_tiles.reserve(storage->value.esdf_tiles.size());
   for(const auto& tile : storage->value.esdf_tiles) {
     seil_cuda_esdf_tile packed{};
-    packed.volume_index = *narrow_index(tile.volume);
+    auto volume = cuda_packing::index(tile.volume);
+    if(!volume)
+      return std::unexpected(std::move(volume.error()));
+    packed.volume_index = *volume;
     packed.x = tile.x;
     packed.y = tile.y;
     packed.z = tile.z;
@@ -161,15 +195,31 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
   for(const auto& slot : storage->topology.sparse_candidates)
     output.sparse_slots.push_back({slot.row, slot.column});
 
-  output.byte_count = bytes(output.nodes) + bytes(output.relative_edges) +
-    bytes(output.absolute_edges) + bytes(output.registration_groups) +
-    bytes(output.registration_samples) + bytes(output.volumes) +
-    bytes(output.tsdf_tiles) + bytes(output.esdf_tiles) + bytes(output.sparse_slots);
+  const std::array ranges{
+    std::pair{output.nodes.size(), sizeof(seil_cuda_node)},
+    std::pair{output.relative_edges.size(), sizeof(seil_cuda_edge)},
+    std::pair{output.absolute_edges.size(), sizeof(seil_cuda_edge)},
+    std::pair{output.registration_groups.size(), sizeof(seil_cuda_registration_group)},
+    std::pair{output.registration_samples.size(), sizeof(seil_cuda_registration_sample)},
+    std::pair{output.volumes.size(), sizeof(seil_cuda_volume)},
+    std::pair{output.tsdf_tiles.size(), sizeof(seil_cuda_tsdf_tile)},
+    std::pair{output.esdf_tiles.size(), sizeof(seil_cuda_esdf_tile)},
+    std::pair{output.sparse_slots.size(), sizeof(seil_cuda_sparse_slot)}
+  };
+  for(const auto& [count_value, element_size] : ranges) {
+    auto total = cuda_packing::add_bytes(output.byte_count, count_value, element_size);
+    if(!total)
+      return std::unexpected(std::move(total.error()));
+    output.byte_count = *total;
+  }
+  auto active_count = cuda_packing::index(storage->topology.active_count);
+  if(!active_count)
+    return std::unexpected(std::move(active_count.error()));
   output.view = {
     seil_cuda_abi_version_value,
     sizeof(seil_cuda_problem),
     output.nodes.data(), output.nodes.size(),
-    static_cast<std::int32_t>(storage->topology.active_count),
+    *active_count,
     output.relative_edges.data(), output.relative_edges.size(),
     output.absolute_edges.data(), output.absolute_edges.size(),
     output.registration_groups.data(), output.registration_groups.size(),
