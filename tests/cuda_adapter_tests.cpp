@@ -69,6 +69,8 @@ int main()
     require(summary.solution_usable != 0 &&
       summary.final_relative_cost < summary.initial_relative_cost,
       "CUDA sparse solve");
+    require(summary.synchronization_count == 1,
+      "CUDA compact synchronization");
     size_t pose_count = 0;
     require(seil_cuda_download_poses(context, nullptr, 0, &pose_count) == 0 &&
       pose_count == 2, "CUDA pose count");
