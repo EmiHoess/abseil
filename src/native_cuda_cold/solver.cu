@@ -1,4 +1,5 @@
 #include "cuda_abi.h"
+#include "field_views.cuh"
 
 #include <cuda_runtime.h>
 
@@ -39,6 +40,196 @@ cudaError_t upload_array(
     cudaMemcpyHostToDevice);
 }
 
+__device__ double robust_cost(seil_cuda_loss robust_loss, double residual)
+{
+  const double absolute = fabs(residual);
+  if(robust_loss.kind == seil_cuda_loss_huber)
+    return absolute <= robust_loss.scale ? 0.5 * residual * residual :
+      robust_loss.scale * (absolute - 0.5 * robust_loss.scale);
+  if(robust_loss.kind == seil_cuda_loss_cauchy) {
+    const double normalized = residual / robust_loss.scale;
+    return 0.5 * robust_loss.scale * robust_loss.scale *
+      log1p(normalized * normalized);
+  }
+  return 0.5 * residual * residual;
+}
+
+__device__ double edge_cost(
+  const seil_cuda_node* nodes,
+  const seil_cuda_edge& edge
+)
+{
+  const seil_cuda_pose4& left = nodes[edge.node_i].pose;
+  const seil_cuda_pose4& right = nodes[edge.node_j].pose;
+  const double cosine = cos(left.yaw);
+  const double sine = sin(left.yaw);
+  const double dx = right.x - left.x;
+  const double dy = right.y - left.y;
+  const double raw[4]{
+    cosine * dx + sine * dy - edge.measured.x,
+    -sine * dx + cosine * dy - edge.measured.y,
+    right.z - left.z - edge.measured.z,
+    atan2(sin(right.yaw - left.yaw - edge.measured.yaw),
+      cos(right.yaw - left.yaw - edge.measured.yaw))
+  };
+  double squared = 0.0;
+  for(int row = 0; row < 4; ++row) {
+    double residual = 0.0;
+    for(int column = 0; column < 4; ++column)
+      residual += edge.sqrt_information[row * 4 + column] * raw[column];
+    squared += residual * residual;
+  }
+  return robust_cost(edge.robust_loss, sqrt(fmax(0.0, squared)));
+}
+
+struct registration_evaluation {
+  double residual;
+  double confidence;
+  double jacobian_i[4];
+  double jacobian_j[4];
+  bool valid;
+};
+
+__device__ registration_evaluation evaluate_registration(
+  const seil_cuda_options& options,
+  const seil_cuda_node* nodes,
+  const seil_cuda_registration_group& group,
+  const seil_cuda_registration_sample& sample,
+  const seil_cuda_volume* volumes,
+  const seil_cuda_tsdf_tile* tsdf_tiles,
+  size_t tsdf_count,
+  const seil_cuda_esdf_tile* esdf_tiles,
+  size_t esdf_count
+)
+{
+  registration_evaluation output{};
+  const seil_cuda_pose4& reference = nodes[group.node_i].pose;
+  const seil_cuda_pose4& reading = nodes[group.node_j].pose;
+  const double reference_cosine = cos(reference.yaw);
+  const double reference_sine = sin(reference.yaw);
+  const double rotated_x = reference_cosine * sample.reference_x -
+    reference_sine * sample.reference_y;
+  const double rotated_y = reference_sine * sample.reference_x +
+    reference_cosine * sample.reference_y;
+  const double world_x = reference.x + rotated_x - reading.x;
+  const double world_y = reference.y + rotated_y - reading.y;
+  const double reading_cosine = cos(reading.yaw);
+  const double reading_sine = sin(reading.yaw);
+  const double point_x = reading_cosine * world_x + reading_sine * world_y;
+  const double point_y = -reading_sine * world_x + reading_cosine * world_y;
+  const double point_z = reference.z + sample.reference_z - reading.z;
+  const seil_cuda_volume& volume = volumes[group.volume_j];
+  seil_cuda_field_query query{};
+  if(!seil_query_trilinear(group.field, group.volume_j, volume.voxel_size,
+    point_x, point_y, point_z, tsdf_tiles, tsdf_count, esdf_tiles, esdf_count,
+    &query))
+    return output;
+  seil_cuda_field_query confidence{};
+  if(options.registration_profile == 0 &&
+    !seil_query_trilinear(seil_cuda_field_tsdf, group.volume_j,
+      volume.voxel_size, point_x, point_y, point_z, tsdf_tiles, tsdf_count,
+      esdf_tiles, esdf_count, &confidence))
+    return output;
+  const double gx = query.gradient[0];
+  const double gy = query.gradient[1];
+  const double gz = query.gradient[2];
+  const double gradient_norm = sqrt(gx * gx + gy * gy + gz * gz);
+  if(options.registration_profile == 0 &&
+    gradient_norm < options.minimum_gradient_norm_registration)
+    return output;
+  output.residual = sample.reference_distance - query.distance;
+  if(options.maximum_absolute_residual_m > 0.0 &&
+    fabs(output.residual) > options.maximum_absolute_residual_m)
+    return output;
+  output.confidence = options.registration_profile == 1 ? 1.0 :
+    fmin(options.maximum_confidence_weight,
+      fmin(sample.reference_tsdf_weight, confidence.weight));
+  if(!(output.confidence > 0.0))
+    return output;
+  const double yaw_world_x = -rotated_y;
+  const double yaw_world_y = rotated_x;
+  const double yaw_reading_x = reading_cosine * yaw_world_x +
+    reading_sine * yaw_world_y;
+  const double yaw_reading_y = -reading_sine * yaw_world_x +
+    reading_cosine * yaw_world_y;
+  output.jacobian_i[0] = -(gx * reading_cosine - gy * reading_sine);
+  output.jacobian_i[1] = -(gx * reading_sine + gy * reading_cosine);
+  output.jacobian_i[2] = -gz;
+  output.jacobian_i[3] = -(gx * yaw_reading_x + gy * yaw_reading_y);
+  output.jacobian_j[0] = -output.jacobian_i[0];
+  output.jacobian_j[1] = -output.jacobian_i[1];
+  output.jacobian_j[2] = -output.jacobian_i[2];
+  output.jacobian_j[3] = -(gx * point_y - gy * point_x);
+  output.valid = true;
+  return output;
+}
+
+__global__ void evaluate_deterministic(
+  seil_cuda_options options,
+  const seil_cuda_node* nodes,
+  const seil_cuda_edge* relative_edges,
+  size_t relative_count,
+  const seil_cuda_edge* absolute_edges,
+  size_t absolute_count,
+  const seil_cuda_registration_group* groups,
+  size_t group_count,
+  const seil_cuda_registration_sample* samples,
+  const seil_cuda_volume* volumes,
+  const seil_cuda_tsdf_tile* tsdf_tiles,
+  size_t tsdf_count,
+  const seil_cuda_esdf_tile* esdf_tiles,
+  size_t esdf_count,
+  double* costs,
+  uint64_t* accepted_rows
+)
+{
+  if(blockIdx.x != 0 || threadIdx.x != 0)
+    return;
+  costs[0] = 0.0;
+  costs[1] = 0.0;
+  costs[2] = 0.0;
+  *accepted_rows = 0;
+  for(size_t index = 0; index < relative_count; ++index)
+    costs[0] += edge_cost(nodes, relative_edges[index]);
+  for(size_t index = 0; index < absolute_count; ++index)
+    costs[1] += edge_cost(nodes, absolute_edges[index]);
+  for(size_t group_index = 0; group_index < group_count; ++group_index) {
+    const seil_cuda_registration_group& group = groups[group_index];
+    double total_confidence = 0.0;
+    for(uint32_t local = 0; local < group.sample_count; ++local) {
+      const auto row = evaluate_registration(options, nodes, group,
+        samples[group.sample_begin + local], volumes, tsdf_tiles, tsdf_count,
+        esdf_tiles, esdf_count);
+      if(row.valid)
+        total_confidence += row.confidence;
+    }
+    for(uint32_t local = 0; local < group.sample_count; ++local) {
+      const auto row = evaluate_registration(options, nodes, group,
+        samples[group.sample_begin + local], volumes, tsdf_tiles, tsdf_count,
+        esdf_tiles, esdf_count);
+      if(!row.valid)
+        continue;
+      const double confidence = options.registration_profile == 1 ?
+        row.confidence : row.confidence / total_confidence;
+      costs[2] += group.direction_weight * confidence *
+        robust_cost(options.registration_loss, row.residual);
+      ++*accepted_rows;
+    }
+  }
+}
+
+__global__ void evaluate_edges_atomic(
+  const seil_cuda_node* nodes,
+  const seil_cuda_edge* edges,
+  size_t count,
+  double* cost
+)
+{
+  const size_t index = blockIdx.x * blockDim.x + threadIdx.x;
+  if(index < count)
+    atomicAdd(cost, edge_cost(nodes, edges[index]));
+}
+
 }
 
 struct seil_cuda_context {
@@ -52,7 +243,17 @@ struct seil_cuda_context {
   seil_cuda_tsdf_tile* tsdf_tiles{};
   seil_cuda_esdf_tile* esdf_tiles{};
   seil_cuda_sparse_slot* sparse_slots{};
+  double* costs{};
+  uint64_t* accepted_rows{};
   std::size_t node_count{};
+  std::size_t relative_edge_count{};
+  std::size_t absolute_edge_count{};
+  std::size_t registration_group_count{};
+  std::size_t registration_sample_count{};
+  std::size_t volume_count{};
+  std::size_t tsdf_tile_count{};
+  std::size_t esdf_tile_count{};
+  std::size_t sparse_slot_count{};
   std::uint64_t uploaded_bytes{};
 };
 
@@ -150,16 +351,83 @@ extern "C" int seil_cuda_upload_problem(
   if(status == cudaSuccess)
     status = upload_array(problem->sparse_slots, problem->sparse_slot_count,
       &context->sparse_slots);
+  if(status == cudaSuccess)
+    status = cudaMalloc(reinterpret_cast<void**>(&context->costs),
+      3U * sizeof(double));
+  if(status == cudaSuccess)
+    status = cudaMalloc(reinterpret_cast<void**>(&context->accepted_rows),
+      sizeof(uint64_t));
   if(status != cudaSuccess)
     return cuda_fail(status);
   context->node_count = problem->node_count;
+  context->relative_edge_count = problem->relative_edge_count;
+  context->absolute_edge_count = problem->absolute_edge_count;
+  context->registration_group_count = problem->registration_group_count;
+  context->registration_sample_count = problem->registration_sample_count;
+  context->volume_count = problem->volume_count;
+  context->tsdf_tile_count = problem->tsdf_tile_count;
+  context->esdf_tile_count = problem->esdf_tile_count;
+  context->sparse_slot_count = problem->sparse_slot_count;
   context->uploaded_bytes = requested;
   return 0;
 }
 
-extern "C" int seil_cuda_solve_stage(seil_cuda_context*, seil_cuda_summary*)
+extern "C" int seil_cuda_solve_stage(
+  seil_cuda_context* context,
+  seil_cuda_summary* output_summary
+)
 {
-  return fail(1, "CUDA solve stage is not available yet");
+  if(context == nullptr || output_summary == nullptr)
+    return fail(3, "CUDA evaluation argument is null");
+  *output_summary = {};
+  if(context->options.reduction_policy == seil_cuda_reduction_atomic_fast) {
+    cudaError_t status = cudaMemset(context->costs, 0, 3U * sizeof(double));
+    if(status == cudaSuccess)
+      status = cudaMemset(context->accepted_rows, 0, sizeof(uint64_t));
+    if(status != cudaSuccess)
+      return cuda_fail(status);
+    constexpr unsigned threads = 128;
+    if(context->relative_edge_count != 0)
+      evaluate_edges_atomic<<<
+        static_cast<unsigned>((context->relative_edge_count + threads - 1) / threads),
+        threads>>>(context->nodes, context->relative_edges,
+          context->relative_edge_count, context->costs);
+    if(context->absolute_edge_count != 0)
+      evaluate_edges_atomic<<<
+        static_cast<unsigned>((context->absolute_edge_count + threads - 1) / threads),
+        threads>>>(context->nodes, context->absolute_edges,
+          context->absolute_edge_count, context->costs + 1);
+  } else {
+    evaluate_deterministic<<<1, 1>>>(context->options, context->nodes,
+      context->relative_edges, context->relative_edge_count,
+      context->absolute_edges, context->absolute_edge_count,
+      context->registration_groups, context->registration_group_count,
+      context->registration_samples, context->volumes,
+      context->tsdf_tiles, context->tsdf_tile_count,
+      context->esdf_tiles, context->esdf_tile_count,
+      context->costs, context->accepted_rows);
+  }
+  cudaError_t status = cudaDeviceSynchronize();
+  if(status != cudaSuccess)
+    return cuda_fail(status);
+  double costs[3]{};
+  uint64_t accepted = 0;
+  status = cudaMemcpy(costs, context->costs, sizeof(costs), cudaMemcpyDeviceToHost);
+  if(status == cudaSuccess)
+    status = cudaMemcpy(&accepted, context->accepted_rows, sizeof(accepted),
+      cudaMemcpyDeviceToHost);
+  if(status != cudaSuccess)
+    return cuda_fail(status);
+  output_summary->initial_relative_cost = costs[0];
+  output_summary->initial_absolute_cost = costs[1];
+  output_summary->initial_registration_cost = costs[2];
+  output_summary->registration_rows = static_cast<uint32_t>(accepted);
+  output_summary->requested_device_bytes = context->uploaded_bytes +
+    3U * sizeof(double) + sizeof(uint64_t);
+  output_summary->peak_device_bytes = output_summary->requested_device_bytes;
+  output_summary->host_to_device_bytes = context->uploaded_bytes;
+  output_summary->synchronization_count = 1;
+  return fail(6, "CUDA evaluation completed before the solve stage");
 }
 
 extern "C" int seil_cuda_download_poses(
@@ -199,6 +467,8 @@ extern "C" int seil_cuda_destroy(seil_cuda_context* context)
   cudaFree(context->tsdf_tiles);
   cudaFree(context->esdf_tiles);
   cudaFree(context->sparse_slots);
+  cudaFree(context->costs);
+  cudaFree(context->accepted_rows);
   delete context;
   return 0;
 }
