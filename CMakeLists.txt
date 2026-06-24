@@ -19,7 +19,6 @@ endif()
 
 add_library(seil STATIC
   src/backend_dispatch.cpp
-  src/cuda_stub.cpp
   src/field.cpp
   src/geometry.cpp
   src/linear_solver.cpp
@@ -39,6 +38,25 @@ else()
   target_sources(seil PRIVATE src/ceres_stub.cpp)
 endif()
 
+if(seil_enable_cuda)
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+  target_sources(seil PRIVATE
+    src/cuda_backend.cpp
+    src/native_cuda_cold/solver.cu
+  )
+  target_link_libraries(seil PUBLIC CUDA::cudart)
+  target_compile_definitions(seil PRIVATE SEIL_HAS_CUDA=1)
+  set_target_properties(seil PROPERTIES
+    CUDA_STANDARD 20
+    CUDA_STANDARD_REQUIRED YES
+    CUDA_SEPARABLE_COMPILATION ON
+    CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  )
+else()
+  target_sources(seil PRIVATE src/cuda_stub.cpp)
+endif()
+
 target_compile_features(seil PUBLIC cxx_std_23)
 target_include_directories(seil
   PUBLIC
@@ -48,8 +66,9 @@ target_include_directories(seil
 
 target_compile_options(seil
   PRIVATE
-    $<$<CXX_COMPILER_ID:MSVC>:/W4;/permissive->
-    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall;-Wextra;-Wpedantic>
+    $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/W4;/permissive->
+    $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-Wall;-Wextra;-Wpedantic>
+    $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
 )
 
 if(BUILD_TESTING)
@@ -92,6 +111,13 @@ if(BUILD_TESTING)
   add_executable(seil_backend_parity_tests tests/backend_parity_tests.cpp)
   target_link_libraries(seil_backend_parity_tests PRIVATE seil::seil)
   add_test(NAME seil_backend_parity_tests COMMAND seil_backend_parity_tests)
+
+  add_executable(seil_cuda_adapter_tests tests/cuda_adapter_tests.cpp)
+  target_link_libraries(seil_cuda_adapter_tests PRIVATE seil::seil)
+  if(seil_enable_cuda)
+    target_compile_definitions(seil_cuda_adapter_tests PRIVATE SEIL_HAS_CUDA=1)
+  endif()
+  add_test(NAME seil_cuda_adapter_tests COMMAND seil_cuda_adapter_tests)
 endif()
 
 set(seil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/seil")
