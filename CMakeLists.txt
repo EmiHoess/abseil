@@ -73,6 +73,11 @@ target_compile_options(seil
     $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
 )
 
+if(seil_build_benchmarks)
+  add_executable(seil_benchmark apps/benchmark.cpp)
+  target_link_libraries(seil_benchmark PRIVATE seil::seil)
+endif()
+
 if(BUILD_TESTING)
   add_executable(seil_error_tests tests/error_tests.cpp)
   target_link_libraries(seil_error_tests PRIVATE seil::seil)
@@ -127,6 +132,13 @@ if(BUILD_TESTING)
     target_compile_definitions(seil_field_view_tests PRIVATE SEIL_HAS_CUDA=1)
   endif()
   add_test(NAME seil_field_view_tests COMMAND seil_field_view_tests)
+
+  if(seil_build_benchmarks)
+    add_executable(seil_benchmark_cli_tests tests/benchmark_cli_tests.cpp)
+    add_dependencies(seil_benchmark_cli_tests seil_benchmark)
+    add_test(NAME seil_benchmark_cli_tests
+      COMMAND seil_benchmark_cli_tests $<TARGET_FILE:seil_benchmark>)
+  endif()
 endif()
 
 set(seil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/seil")
