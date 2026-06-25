@@ -148,6 +148,8 @@ bool sample_field(
   bool calculate_gradient,
   field_query& output
 );
+field_tile_view make_field_view(const tsdf_tile& tile) noexcept;
+field_tile_view make_field_view(const esdf_tile& tile) noexcept;
 std::vector<registration_row> evaluate_registration_group(
   const prepared_storage& storage,
   const registration_group& group,

@@ -139,6 +139,31 @@ int main()
   require(!seil::validate_fields(field_problem(), *invalid),
     "invalid field generation rejected");
 
+  auto squared = std::make_shared<std::vector<borrowed_voxel>>(seil::tile_voxels);
+  for(std::size_t index = 0; index < squared->size(); ++index) {
+    const float coordinate = static_cast<float>(index % seil::tile_edge);
+    (*squared)[index] = {coordinate * coordinate, 0.0F,
+      coordinate == 2.0F ? 3U : 1U};
+  }
+  auto squared_fields = std::make_shared<seil::field_snapshot>();
+  squared_fields->identity = 83;
+  squared_fields->owners.push_back(squared);
+  const auto* squared_base = reinterpret_cast<const std::byte*>(squared->data());
+  squared_fields->tiles.push_back({0, 0, 0, 0, seil::field_kind::esdf,
+    squared_base, nullptr, squared_base + offsetof(borrowed_voxel, flags),
+    sizeof(borrowed_voxel), seil::field_encoding::squared_voxels,
+    0.5F, 3.0F, 1, 1, 1});
+  prepared = seil::prepare_fields(field_problem(), squared_fields);
+  require(prepared.has_value(), "squared field preparation");
+  query = seil::query_field(*prepared, seil::field_kind::esdf, 0,
+    {2.2, 1.2, 1.2}, seil::field_interpolation::nearest, false);
+  require(query.has_value() && query->sample.distance == -1.0,
+    "squared field decoding");
+  std::weak_ptr<const void> retained = squared;
+  squared.reset();
+  squared_fields.reset();
+  require(!retained.expired(), "field owner retention");
+
 #if defined(SEIL_HAS_CUDA)
   verify_cuda_snapshot(*storage);
 #endif

@@ -20,6 +20,35 @@ operation_error field_view_error(std::string message)
 
 }
 
+namespace detail {
+
+field_tile_view make_field_view(const tsdf_tile& tile) noexcept
+{
+  const auto* first = tile.voxels.data();
+  return {
+    tile.volume, tile.x, tile.y, tile.z, field_kind::tsdf,
+    reinterpret_cast<const std::byte*>(&first->distance),
+    reinterpret_cast<const std::byte*>(&first->weight),
+    reinterpret_cast<const std::byte*>(&first->flags),
+    sizeof(tsdf_voxel), field_encoding::signed_metres, 1.0F,
+    std::numeric_limits<float>::max(), 1, 1, 1
+  };
+}
+
+field_tile_view make_field_view(const esdf_tile& tile) noexcept
+{
+  const auto* first = tile.voxels.data();
+  return {
+    tile.volume, tile.x, tile.y, tile.z, field_kind::esdf,
+    reinterpret_cast<const std::byte*>(&first->distance), nullptr,
+    reinterpret_cast<const std::byte*>(&first->flags),
+    sizeof(esdf_voxel), field_encoding::signed_metres, 1.0F,
+    std::numeric_limits<float>::max(), 1, 1, 1
+  };
+}
+
+}
+
 operation_status validate_fields(
   const problem& value,
   const field_snapshot& fields

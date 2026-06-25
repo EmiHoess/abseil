@@ -53,21 +53,16 @@ bool lookup(
     const auto found = storage.tsdf_index.find(key);
     if(found == storage.tsdf_index.end())
       return false;
-    const auto& voxel = storage.value.tsdf_tiles[found->second].voxels[local];
-    if((voxel.flags & 1U) == 0U || !(voxel.weight > 0.0F) ||
-      !std::isfinite(voxel.distance) || !std::isfinite(voxel.weight))
-      return false;
-    output = {voxel.distance, voxel.weight};
-    return true;
+    const field_tile_view view = detail::make_field_view(
+      storage.value.tsdf_tiles[found->second]);
+    return read_field(view, local, output.distance, output.weight);
   }
   const auto found = storage.esdf_index.find(key);
   if(found == storage.esdf_index.end())
     return false;
-  const auto& voxel = storage.value.esdf_tiles[found->second].voxels[local];
-  if((voxel.flags & 1U) == 0U || !std::isfinite(voxel.distance))
-    return false;
-  output = {voxel.distance, 1.0};
-  return true;
+  const field_tile_view view = detail::make_field_view(
+    storage.value.esdf_tiles[found->second]);
+  return read_field(view, local, output.distance, output.weight);
 }
 
 bool nearest(

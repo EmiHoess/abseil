@@ -13,7 +13,7 @@ struct seil_cuda_field_query {
   bool gradient_valid;
 };
 
-__device__ inline bool seil_read_resident_field(
+__device__ inline bool seil_read_field(
   const seil_cuda_field_tile& tile,
   size_t local,
   double* distance,
@@ -64,14 +64,10 @@ __device__ inline bool seil_lookup_field(
   int x,
   int y,
   int z,
-  const seil_cuda_tsdf_tile* tsdf_tiles,
-  size_t tsdf_count,
-  const seil_cuda_esdf_tile* esdf_tiles,
-  size_t esdf_count,
-  const seil_cuda_field_tile* resident_tsdf,
-  size_t resident_tsdf_count,
-  const seil_cuda_field_tile* resident_esdf,
-  size_t resident_esdf_count,
+  const seil_cuda_field_tile* tsdf_views,
+  size_t tsdf_view_count,
+  const seil_cuda_field_tile* esdf_views,
+  size_t esdf_view_count,
   double* distance,
   double* weight
 )
@@ -82,43 +78,15 @@ __device__ inline bool seil_lookup_field(
   const size_t local = static_cast<size_t>(seil_floor_modulo(x, 8)) +
     8U * (static_cast<size_t>(seil_floor_modulo(y, 8)) +
     8U * static_cast<size_t>(seil_floor_modulo(z, 8)));
-  const seil_cuda_field_tile* resident = field == seil_cuda_field_tsdf ?
-    resident_tsdf : resident_esdf;
-  const size_t resident_count = field == seil_cuda_field_tsdf ?
-    resident_tsdf_count : resident_esdf_count;
-  for(size_t index = 0; index < resident_count; ++index) {
-    const seil_cuda_field_tile& tile = resident[index];
+  const seil_cuda_field_tile* views = field == seil_cuda_field_tsdf ?
+    tsdf_views : esdf_views;
+  const size_t view_count = field == seil_cuda_field_tsdf ?
+    tsdf_view_count : esdf_view_count;
+  for(size_t index = 0; index < view_count; ++index) {
+    const seil_cuda_field_tile& tile = views[index];
     if(tile.volume_index == volume && tile.x == tile_x &&
       tile.y == tile_y && tile.z == tile_z)
-      return seil_read_resident_field(tile, local, distance, weight);
-  }
-  if(field == seil_cuda_field_tsdf) {
-    for(size_t index = 0; index < tsdf_count; ++index) {
-      const seil_cuda_tsdf_tile& tile = tsdf_tiles[index];
-      if(tile.volume_index != volume || tile.x != tile_x ||
-        tile.y != tile_y || tile.z != tile_z)
-        continue;
-      const seil_cuda_tsdf_voxel& voxel = tile.voxels[local];
-      if((voxel.flags & 1U) == 0U || !(voxel.weight > 0.0F) ||
-        !isfinite(voxel.distance) || !isfinite(voxel.weight))
-        return false;
-      *distance = voxel.distance;
-      *weight = voxel.weight;
-      return true;
-    }
-    return false;
-  }
-  for(size_t index = 0; index < esdf_count; ++index) {
-    const seil_cuda_esdf_tile& tile = esdf_tiles[index];
-    if(tile.volume_index != volume || tile.x != tile_x ||
-      tile.y != tile_y || tile.z != tile_z)
-      continue;
-    const seil_cuda_esdf_voxel& voxel = tile.voxels[local];
-    if((voxel.flags & 1U) == 0U || !isfinite(voxel.distance))
-      return false;
-    *distance = voxel.distance;
-    *weight = 1.0;
-    return true;
+      return seil_read_field(tile, local, distance, weight);
   }
   return false;
 }
@@ -130,14 +98,10 @@ __device__ inline bool seil_query_trilinear(
   double point_x,
   double point_y,
   double point_z,
-  const seil_cuda_tsdf_tile* tsdf_tiles,
-  size_t tsdf_count,
-  const seil_cuda_esdf_tile* esdf_tiles,
-  size_t esdf_count,
-  const seil_cuda_field_tile* resident_tsdf,
-  size_t resident_tsdf_count,
-  const seil_cuda_field_tile* resident_esdf,
-  size_t resident_esdf_count,
+  const seil_cuda_field_tile* tsdf_views,
+  size_t tsdf_view_count,
+  const seil_cuda_field_tile* esdf_views,
+  size_t esdf_view_count,
   seil_cuda_field_query* output
 )
 {
@@ -156,8 +120,7 @@ __device__ inline bool seil_query_trilinear(
     for(int y = 0; y < 2; ++y)
       for(int x = 0; x < 2; ++x)
         if(!seil_lookup_field(field, volume, base_x + x, base_y + y,
-          base_z + z, tsdf_tiles, tsdf_count, esdf_tiles, esdf_count,
-          resident_tsdf, resident_tsdf_count, resident_esdf, resident_esdf_count,
+          base_z + z, tsdf_views, tsdf_view_count, esdf_views, esdf_view_count,
           &distances[x][y][z], &weights[x][y][z]))
           return false;
   *output = {};

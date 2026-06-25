@@ -53,16 +53,26 @@ int main()
   auto native = seil::solve(prepared, {});
   require(native.has_value() && native->solution_usable,
     "native parity solve");
-  if(!seil::backend_available(seil::backend::ceres_cpu))
-    return 0;
-  seil::solve_options options;
-  options.selected_backend = seil::backend::ceres_cpu;
-  options.specific = seil::ceres_cpu_options{};
-  auto ceres = seil::solve(prepared, options);
-  require(ceres.has_value() && ceres->solution_usable, "ceres parity solve");
-  require(std::abs(ceres->poses[1].x - native->poses[1].x) < 1.0e-4 &&
-    std::abs(ceres->poses[1].y - native->poses[1].y) < 1.0e-4 &&
-    std::abs(ceres->final_cost.total() - native->final_cost.total()) < 1.0e-7 &&
-    ceres->registration.accepted_rows == native->registration.accepted_rows,
-    "ceres native parity");
+  if(seil::backend_available(seil::backend::ceres_cpu)) {
+    seil::solve_options options;
+    options.selected_backend = seil::backend::ceres_cpu;
+    options.specific = seil::ceres_cpu_options{};
+    auto ceres = seil::solve(prepared, options);
+    require(ceres.has_value() && ceres->solution_usable, "ceres parity solve");
+    require(std::abs(ceres->poses[1].x - native->poses[1].x) < 1.0e-4 &&
+      std::abs(ceres->poses[1].y - native->poses[1].y) < 1.0e-4 &&
+      std::abs(ceres->final_cost.total() - native->final_cost.total()) < 1.0e-7 &&
+      ceres->registration.accepted_rows == native->registration.accepted_rows,
+      "ceres native parity");
+  }
+  if(seil::backend_available(seil::backend::native_cuda_cold)) {
+    seil::solve_options options;
+    options.selected_backend = seil::backend::native_cuda_cold;
+    options.specific = seil::native_cuda_cold_options{};
+    auto cuda = seil::solve(prepared, options);
+    require(cuda.has_value() && cuda->solution_usable, "CUDA parity solve");
+    require(std::abs(cuda->initial_cost.total() - native->initial_cost.total()) <
+      1.0e-7 && cuda->registration.accepted_rows ==
+      native->registration.accepted_rows, "CUDA field parity");
+  }
 }
