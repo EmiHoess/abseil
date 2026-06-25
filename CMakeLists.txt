@@ -43,6 +43,7 @@ if(seil_enable_cuda)
   find_package(CUDAToolkit REQUIRED)
   target_sources(seil PRIVATE
     src/cuda_backend.cpp
+    src/cuda_checked.cpp
     src/native_cuda_cold/solver.cu
   )
   target_link_libraries(seil PUBLIC CUDA::cudart)

@@ -235,18 +235,16 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
 
 bool cuda_backend_available() noexcept
 {
-  return false;
+  return true;
 }
 
 operation_result<solve_result> solve_native_cuda_cold(
-  const prepared_problem&,
-  const common_options&,
-  const native_cuda_cold_options&
+  const prepared_problem& value,
+  const common_options& common,
+  const native_cuda_cold_options& options
 )
 {
-  return std::unexpected(operation_error{operation_code::backend_unavailable,
-    operation_stage::dispatch, 0,
-    "native_cuda_cold backend is not exposed by this build stage"});
+  return solve_cuda_checked(value, common, options);
 }
 
 }

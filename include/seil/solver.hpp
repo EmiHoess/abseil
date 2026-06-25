@@ -159,6 +159,12 @@ operation_result<solve_result> solve(
   const solve_options& options
 );
 
+operation_result<solve_result> solve_cuda_checked(
+  const prepared_problem& value,
+  const common_options& common = {},
+  const native_cuda_cold_options& options = {}
+);
+
 operation_result<backend> parse_backend(std::string_view name);
 std::string_view backend_name(backend value) noexcept;
 std::string_view termination_name(termination value) noexcept;

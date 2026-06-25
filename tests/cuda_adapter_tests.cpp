@@ -1,6 +1,7 @@
 #include "../src/cuda_backend.hpp"
 
 #include <seil/problem.hpp>
+#include <seil/solver.hpp>
 
 #include <cmath>
 #include <cstdlib>
@@ -46,6 +47,36 @@ int main()
     packed->relative_edges.size() == 1 && packed->byte_count > 0,
     "CUDA snapshot packing");
   if(status == 0 && count > 0) {
+    seil::native_cuda_cold_options public_options;
+    public_options.device_index = 0;
+    auto public_result = seil::solve_cuda_checked(*prepared, {}, public_options);
+    require(public_result.has_value() && public_result->solution_usable &&
+      public_result->selected_backend == seil::backend::native_cuda_cold,
+      "checked CUDA solve");
+    require(std::abs(public_result->poses[1].x - 1.0) < 1.0e-10,
+      "checked CUDA pose");
+    seil::solve_options dispatched_options;
+    dispatched_options.selected_backend = seil::backend::native_cuda_cold;
+    dispatched_options.specific = public_options;
+    auto dispatched = seil::solve(*prepared, dispatched_options);
+    require(dispatched.has_value() && dispatched->solution_usable,
+      "generic CUDA dispatch");
+    seil::native_cuda_cold_options missing_device;
+    missing_device.device_index = count;
+    auto unavailable = seil::solve_cuda_checked(*prepared, {}, missing_device);
+    require(!unavailable && unavailable.error().stage ==
+      seil::operation_stage::device_query, "checked CUDA device error");
+    seil::native_cuda_cold_options limited;
+    limited.device_index = 0;
+    limited.memory_budget_bytes = 1;
+    auto exhausted = seil::solve_cuda_checked(*prepared, {}, limited);
+    require(!exhausted && exhausted.error().stage == seil::operation_stage::upload &&
+      exhausted.error().code == seil::operation_code::resource_exhausted,
+      "checked CUDA budget error");
+    auto recovered = seil::solve_cuda_checked(*prepared, {}, public_options);
+    require(recovered.has_value() && recovered->solution_usable,
+      "checked CUDA recovery");
+
     seil_cuda_options options{};
     options.abi_version = seil_cuda_abi_version_value;
     options.struct_size = sizeof(options);
