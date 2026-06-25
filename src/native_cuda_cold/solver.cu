@@ -99,7 +99,11 @@ __device__ registration_evaluation evaluate_registration(
   const seil_cuda_tsdf_tile* tsdf_tiles,
   size_t tsdf_count,
   const seil_cuda_esdf_tile* esdf_tiles,
-  size_t esdf_count
+  size_t esdf_count,
+  const seil_cuda_field_tile* resident_tsdf,
+  size_t resident_tsdf_count,
+  const seil_cuda_field_tile* resident_esdf,
+  size_t resident_esdf_count
 )
 {
   registration_evaluation output{};
@@ -122,13 +126,15 @@ __device__ registration_evaluation evaluate_registration(
   seil_cuda_field_query query{};
   if(!seil_query_trilinear(group.field, group.volume_j, volume.voxel_size,
     point_x, point_y, point_z, tsdf_tiles, tsdf_count, esdf_tiles, esdf_count,
+    resident_tsdf, resident_tsdf_count, resident_esdf, resident_esdf_count,
     &query))
     return output;
   seil_cuda_field_query confidence{};
   if(options.registration_profile == 0 &&
     !seil_query_trilinear(seil_cuda_field_tsdf, group.volume_j,
       volume.voxel_size, point_x, point_y, point_z, tsdf_tiles, tsdf_count,
-      esdf_tiles, esdf_count, &confidence))
+      esdf_tiles, esdf_count, resident_tsdf, resident_tsdf_count,
+      resident_esdf, resident_esdf_count, &confidence))
     return output;
   const double gx = query.gradient[0];
   const double gy = query.gradient[1];
@@ -179,6 +185,10 @@ __global__ void evaluate_deterministic(
   size_t tsdf_count,
   const seil_cuda_esdf_tile* esdf_tiles,
   size_t esdf_count,
+  const seil_cuda_field_tile* resident_tsdf,
+  size_t resident_tsdf_count,
+  const seil_cuda_field_tile* resident_esdf,
+  size_t resident_esdf_count,
   double* costs,
   uint64_t* accepted_rows
 )
@@ -199,14 +209,16 @@ __global__ void evaluate_deterministic(
     for(uint32_t local = 0; local < group.sample_count; ++local) {
       const auto row = evaluate_registration(options, nodes, group,
         samples[group.sample_begin + local], volumes, tsdf_tiles, tsdf_count,
-        esdf_tiles, esdf_count);
+        esdf_tiles, esdf_count, resident_tsdf, resident_tsdf_count,
+        resident_esdf, resident_esdf_count);
       if(row.valid)
         total_confidence += row.confidence;
     }
     for(uint32_t local = 0; local < group.sample_count; ++local) {
       const auto row = evaluate_registration(options, nodes, group,
         samples[group.sample_begin + local], volumes, tsdf_tiles, tsdf_count,
-        esdf_tiles, esdf_count);
+        esdf_tiles, esdf_count, resident_tsdf, resident_tsdf_count,
+        resident_esdf, resident_esdf_count);
       if(!row.valid)
         continue;
       const double confidence = options.registration_profile == 1 ?
@@ -358,6 +370,8 @@ struct seil_cuda_context {
   seil_cuda_volume* volumes{};
   seil_cuda_tsdf_tile* tsdf_tiles{};
   seil_cuda_esdf_tile* esdf_tiles{};
+  seil_cuda_field_tile* resident_tsdf{};
+  seil_cuda_field_tile* resident_esdf{};
   seil_cuda_sparse_slot* sparse_slots{};
   seil_cuda_compact_state* compact{};
   int32_t active_node_count{};
@@ -369,6 +383,8 @@ struct seil_cuda_context {
   std::size_t volume_count{};
   std::size_t tsdf_tile_count{};
   std::size_t esdf_tile_count{};
+  std::size_t resident_tsdf_count{};
+  std::size_t resident_esdf_count{};
   std::size_t sparse_slot_count{};
   std::uint64_t uploaded_bytes{};
   seil_cuda_iteration iteration{};
@@ -438,6 +454,8 @@ extern "C" int seil_cuda_upload_problem(
     problem->volume_count * sizeof(seil_cuda_volume) +
     problem->tsdf_tile_count * sizeof(seil_cuda_tsdf_tile) +
     problem->esdf_tile_count * sizeof(seil_cuda_esdf_tile) +
+    problem->resident_tsdf_count * sizeof(seil_cuda_field_tile) +
+    problem->resident_esdf_count * sizeof(seil_cuda_field_tile) +
     problem->sparse_slot_count * sizeof(seil_cuda_sparse_slot);
   if(context->options.memory_budget_bytes != 0 &&
     requested > context->options.memory_budget_bytes)
@@ -467,6 +485,12 @@ extern "C" int seil_cuda_upload_problem(
     status = upload_array(problem->esdf_tiles, problem->esdf_tile_count,
       &context->esdf_tiles);
   if(status == cudaSuccess)
+    status = upload_array(problem->resident_tsdf, problem->resident_tsdf_count,
+      &context->resident_tsdf);
+  if(status == cudaSuccess)
+    status = upload_array(problem->resident_esdf, problem->resident_esdf_count,
+      &context->resident_esdf);
+  if(status == cudaSuccess)
     status = upload_array(problem->sparse_slots, problem->sparse_slot_count,
       &context->sparse_slots);
   if(status == cudaSuccess)
@@ -483,6 +507,8 @@ extern "C" int seil_cuda_upload_problem(
   context->volume_count = problem->volume_count;
   context->tsdf_tile_count = problem->tsdf_tile_count;
   context->esdf_tile_count = problem->esdf_tile_count;
+  context->resident_tsdf_count = problem->resident_tsdf_count;
+  context->resident_esdf_count = problem->resident_esdf_count;
   context->sparse_slot_count = problem->sparse_slot_count;
   context->uploaded_bytes = requested;
   return 0;
@@ -530,6 +556,8 @@ extern "C" int seil_cuda_solve_stage(
         context->registration_samples, context->volumes,
         context->tsdf_tiles, context->tsdf_tile_count,
         context->esdf_tiles, context->esdf_tile_count,
+        context->resident_tsdf, context->resident_tsdf_count,
+        context->resident_esdf, context->resident_esdf_count,
         costs, accepted_rows);
     }
   };
@@ -643,6 +671,8 @@ extern "C" int seil_cuda_destroy(seil_cuda_context* context)
   cudaFree(context->volumes);
   cudaFree(context->tsdf_tiles);
   cudaFree(context->esdf_tiles);
+  cudaFree(context->resident_tsdf);
+  cudaFree(context->resident_esdf);
   cudaFree(context->sparse_slots);
   cudaFree(context->compact);
   delete context;

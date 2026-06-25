@@ -20,6 +20,7 @@ endif()
 add_library(seil STATIC
   src/backend_dispatch.cpp
   src/field.cpp
+  src/field_views.cpp
   src/geometry.cpp
   src/linear_solver.cpp
   src/native_solver.cpp
@@ -119,6 +120,13 @@ if(BUILD_TESTING)
     target_compile_definitions(seil_cuda_adapter_tests PRIVATE SEIL_HAS_CUDA=1)
   endif()
   add_test(NAME seil_cuda_adapter_tests COMMAND seil_cuda_adapter_tests)
+
+  add_executable(seil_field_view_tests tests/field_view_tests.cpp)
+  target_link_libraries(seil_field_view_tests PRIVATE seil::seil)
+  if(seil_enable_cuda)
+    target_compile_definitions(seil_field_view_tests PRIVATE SEIL_HAS_CUDA=1)
+  endif()
+  add_test(NAME seil_field_view_tests COMMAND seil_field_view_tests)
 endif()
 
 set(seil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/seil")

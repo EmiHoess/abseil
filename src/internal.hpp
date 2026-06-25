@@ -2,6 +2,7 @@
 
 #include <seil/problem.hpp>
 #include <seil/field.hpp>
+#include <seil/field_views.hpp>
 #include <seil/solver.hpp>
 
 #include <array>
@@ -63,6 +64,9 @@ struct topology_index {
 struct prepared_storage {
   problem value;
   topology_index topology;
+  std::shared_ptr<const field_snapshot> fields;
+  std::unordered_map<tile_key, std::size_t, tile_key_hash> borrowed_tsdf_index;
+  std::unordered_map<tile_key, std::size_t, tile_key_hash> borrowed_esdf_index;
   std::unordered_map<tile_key, std::size_t, tile_key_hash> tsdf_index;
   std::unordered_map<tile_key, std::size_t, tile_key_hash> esdf_index;
   std::string hash;

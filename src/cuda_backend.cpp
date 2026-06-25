@@ -192,6 +192,25 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
         tile.voxels[index].flags};
     output.esdf_tiles.push_back(packed);
   }
+  if(storage->fields)
+    for(const auto& tile : storage->fields->tiles) {
+      auto volume = cuda_packing::index(tile.volume);
+      if(!volume)
+        return std::unexpected(std::move(volume.error()));
+      seil_cuda_field_tile packed{
+        *volume, tile.x, tile.y, tile.z,
+        reinterpret_cast<const unsigned char*>(tile.distance),
+        reinterpret_cast<const unsigned char*>(tile.weight),
+        reinterpret_cast<const unsigned char*>(tile.flags),
+        tile.voxel_stride,
+        static_cast<std::uint32_t>(tile.encoding),
+        tile.voxel_size,
+        tile.maximum_distance
+      };
+      auto& destination = tile.kind == field_kind::tsdf ?
+        output.resident_tsdf : output.resident_esdf;
+      destination.push_back(packed);
+    }
   for(const auto& slot : storage->topology.sparse_candidates)
     output.sparse_slots.push_back({slot.row, slot.column});
 
@@ -204,6 +223,8 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
     std::pair{output.volumes.size(), sizeof(seil_cuda_volume)},
     std::pair{output.tsdf_tiles.size(), sizeof(seil_cuda_tsdf_tile)},
     std::pair{output.esdf_tiles.size(), sizeof(seil_cuda_esdf_tile)},
+    std::pair{output.resident_tsdf.size(), sizeof(seil_cuda_field_tile)},
+    std::pair{output.resident_esdf.size(), sizeof(seil_cuda_field_tile)},
     std::pair{output.sparse_slots.size(), sizeof(seil_cuda_sparse_slot)}
   };
   for(const auto& [count_value, element_size] : ranges) {
@@ -227,6 +248,8 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
     output.volumes.data(), output.volumes.size(),
     output.tsdf_tiles.data(), output.tsdf_tiles.size(),
     output.esdf_tiles.data(), output.esdf_tiles.size(),
+    output.resident_tsdf.data(), output.resident_tsdf.size(),
+    output.resident_esdf.data(), output.resident_esdf.size(),
     output.sparse_slots.data(), output.sparse_slots.size(),
     storage->hash.c_str()
   };

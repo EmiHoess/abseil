@@ -13,6 +13,37 @@ struct seil_cuda_field_query {
   bool gradient_valid;
 };
 
+__device__ inline bool seil_read_resident_field(
+  const seil_cuda_field_tile& tile,
+  size_t local,
+  double* distance,
+  double* weight
+)
+{
+  const size_t offset = local * tile.voxel_stride;
+  const float value = *reinterpret_cast<const float*>(tile.distance + offset);
+  const uint32_t flags = *reinterpret_cast<const uint32_t*>(tile.flags + offset);
+  if((flags & 1U) == 0U || !isfinite(value))
+    return false;
+  float decoded = value;
+  float confidence = 1.0F;
+  if(tile.weight != nullptr) {
+    confidence = *reinterpret_cast<const float*>(tile.weight + offset);
+    if(!isfinite(confidence) || !(confidence > 0.0F))
+      return false;
+  } else if(tile.encoding == 1U) {
+    if(value < 0.0F)
+      return false;
+    decoded = copysignf(fminf(tile.maximum_distance,
+      tile.voxel_size * sqrtf(value)), (flags & 2U) != 0U ? -1.0F : 1.0F);
+  } else {
+    decoded = copysignf(fminf(tile.maximum_distance, fabsf(value)), value);
+  }
+  *distance = decoded;
+  *weight = confidence;
+  return true;
+}
+
 __device__ inline int seil_floor_divide(int value, int divisor)
 {
   int quotient = value / divisor;
@@ -37,6 +68,10 @@ __device__ inline bool seil_lookup_field(
   size_t tsdf_count,
   const seil_cuda_esdf_tile* esdf_tiles,
   size_t esdf_count,
+  const seil_cuda_field_tile* resident_tsdf,
+  size_t resident_tsdf_count,
+  const seil_cuda_field_tile* resident_esdf,
+  size_t resident_esdf_count,
   double* distance,
   double* weight
 )
@@ -47,6 +82,16 @@ __device__ inline bool seil_lookup_field(
   const size_t local = static_cast<size_t>(seil_floor_modulo(x, 8)) +
     8U * (static_cast<size_t>(seil_floor_modulo(y, 8)) +
     8U * static_cast<size_t>(seil_floor_modulo(z, 8)));
+  const seil_cuda_field_tile* resident = field == seil_cuda_field_tsdf ?
+    resident_tsdf : resident_esdf;
+  const size_t resident_count = field == seil_cuda_field_tsdf ?
+    resident_tsdf_count : resident_esdf_count;
+  for(size_t index = 0; index < resident_count; ++index) {
+    const seil_cuda_field_tile& tile = resident[index];
+    if(tile.volume_index == volume && tile.x == tile_x &&
+      tile.y == tile_y && tile.z == tile_z)
+      return seil_read_resident_field(tile, local, distance, weight);
+  }
   if(field == seil_cuda_field_tsdf) {
     for(size_t index = 0; index < tsdf_count; ++index) {
       const seil_cuda_tsdf_tile& tile = tsdf_tiles[index];
@@ -89,6 +134,10 @@ __device__ inline bool seil_query_trilinear(
   size_t tsdf_count,
   const seil_cuda_esdf_tile* esdf_tiles,
   size_t esdf_count,
+  const seil_cuda_field_tile* resident_tsdf,
+  size_t resident_tsdf_count,
+  const seil_cuda_field_tile* resident_esdf,
+  size_t resident_esdf_count,
   seil_cuda_field_query* output
 )
 {
@@ -108,6 +157,7 @@ __device__ inline bool seil_query_trilinear(
       for(int x = 0; x < 2; ++x)
         if(!seil_lookup_field(field, volume, base_x + x, base_y + y,
           base_z + z, tsdf_tiles, tsdf_count, esdf_tiles, esdf_count,
+          resident_tsdf, resident_tsdf_count, resident_esdf, resident_esdf_count,
           &distances[x][y][z], &weights[x][y][z]))
           return false;
   *output = {};

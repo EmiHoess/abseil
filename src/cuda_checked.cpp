@@ -113,6 +113,10 @@ operation_result<solve_result> solve_cuda_checked(
   if(storage == nullptr)
     return std::unexpected(operation_error{operation_code::invalid_argument,
       operation_stage::validation, 0, "problem is not prepared"});
+  if(storage->fields && storage->fields->device != options.device_index)
+    return std::unexpected(operation_error{operation_code::invalid_argument,
+      operation_stage::validation, 0,
+      "borrowed CUDA fields are not resident on the selected device"});
 
   int32_t device_count = 0;
   int status = seil_cuda_device_count(&device_count);

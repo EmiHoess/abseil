@@ -84,6 +84,9 @@ operation_result<solve_result> solve(
       if(!std::holds_alternative<native_cpu_options>(options.specific))
         return std::unexpected(dispatch_error(operation_code::invalid_argument,
           "native_cpu backend options do not match"));
+      if(!cpu_fields_accessible(value))
+        return std::unexpected(dispatch_error(operation_code::invalid_argument,
+          "native_cpu cannot access device-resident fields"));
       return detail::solve_native_cpu(value, options.common,
         std::get<native_cpu_options>(options.specific));
     case backend::ceres_cpu:

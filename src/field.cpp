@@ -39,6 +39,16 @@ bool lookup(
     8U * static_cast<std::size_t>(floor_modulo(z, 8)));
 
   const detail::tile_key key{volume, tile_x, tile_y, tile_z};
+  if(storage.fields) {
+    if(storage.fields->device != -1)
+      return false;
+    const auto& borrowed_index = field == field_kind::tsdf ?
+      storage.borrowed_tsdf_index : storage.borrowed_esdf_index;
+    const auto borrowed = borrowed_index.find(key);
+    if(borrowed != borrowed_index.end())
+      return read_field(storage.fields->tiles[borrowed->second], local,
+        output.distance, output.weight);
+  }
   if(field == field_kind::tsdf) {
     const auto found = storage.tsdf_index.find(key);
     if(found == storage.tsdf_index.end())

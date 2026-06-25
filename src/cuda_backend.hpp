@@ -52,6 +52,8 @@ struct packed_cuda_problem {
   std::vector<seil_cuda_volume> volumes;
   std::vector<seil_cuda_tsdf_tile> tsdf_tiles;
   std::vector<seil_cuda_esdf_tile> esdf_tiles;
+  std::vector<seil_cuda_field_tile> resident_tsdf;
+  std::vector<seil_cuda_field_tile> resident_esdf;
   std::vector<seil_cuda_sparse_slot> sparse_slots;
   seil_cuda_problem view{};
   std::uint64_t byte_count{};

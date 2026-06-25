@@ -256,6 +256,10 @@ operation_result<solve_result> solve_ceres_cpu(
   if(storage == nullptr)
     return std::unexpected(operation_error{operation_code::invalid_argument,
       operation_stage::validation, 0, "problem is not prepared"});
+  if(storage->fields)
+    return std::unexpected(operation_error{operation_code::invalid_argument,
+      operation_stage::validation, 0,
+      "ceres_cpu does not accept borrowed field snapshots"});
 
   const auto started = std::chrono::steady_clock::now();
   solve_result result;

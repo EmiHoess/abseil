@@ -132,6 +132,20 @@ typedef struct seil_cuda_esdf_tile {
   seil_cuda_esdf_voxel voxels[seil_cuda_tile_voxels];
 } seil_cuda_esdf_tile;
 
+typedef struct seil_cuda_field_tile {
+  int32_t volume_index;
+  int32_t x;
+  int32_t y;
+  int32_t z;
+  const unsigned char* distance;
+  const unsigned char* weight;
+  const unsigned char* flags;
+  size_t voxel_stride;
+  uint32_t encoding;
+  float voxel_size;
+  float maximum_distance;
+} seil_cuda_field_tile;
+
 typedef struct seil_cuda_sparse_slot {
   int32_t block_row;
   int32_t block_column;
@@ -157,6 +171,10 @@ typedef struct seil_cuda_problem {
   size_t tsdf_tile_count;
   const seil_cuda_esdf_tile* esdf_tiles;
   size_t esdf_tile_count;
+  const seil_cuda_field_tile* resident_tsdf;
+  size_t resident_tsdf_count;
+  const seil_cuda_field_tile* resident_esdf;
+  size_t resident_esdf_count;
   const seil_cuda_sparse_slot* sparse_slots;
   size_t sparse_slot_count;
   const char* content_hash;
