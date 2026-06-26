@@ -10,11 +10,11 @@ option(seil_build_benchmarks "Build the seil benchmark executable" OFF)
 option(seil_enable_ceres "Build the Ceres CPU backend" OFF)
 option(seil_enable_cuda "Build the cold-snapshot CUDA backend" OFF)
 
-if(MSVC AND seil_enable_ceres)
+if(MSVC)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
-  add_compile_definitions(_ITERATOR_DEBUG_LEVEL=0)
-else()
-  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  if(seil_enable_ceres)
+    add_compile_definitions(_ITERATOR_DEBUG_LEVEL=0)
+  endif()
 endif()
 
 add_library(seil STATIC
@@ -29,6 +29,10 @@ add_library(seil STATIC
   src/sparse_system.cpp
 )
 add_library(seil::seil ALIAS seil)
+
+if(MSVC AND seil_enable_ceres)
+  target_compile_definitions(seil PUBLIC _ITERATOR_DEBUG_LEVEL=0)
+endif()
 
 if(seil_enable_ceres)
   find_package(Ceres CONFIG REQUIRED)
