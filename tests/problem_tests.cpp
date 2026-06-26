@@ -74,5 +74,20 @@ int main()
   if(!disconnected || !disconnected->has_unanchored_components())
     return 13;
 
+  problem malformed = anchored_problem(1.0);
+  malformed.relative_factors[0].node_j = 4;
+  if(prepare(std::move(malformed)))
+    return 14;
+  malformed = anchored_problem(1.0);
+  malformed.volumes.push_back({3, 0.0, true, false});
+  if(prepare(std::move(malformed)))
+    return 15;
+  malformed = anchored_problem(1.0);
+  malformed.volumes.push_back({0, 1.0, true, false});
+  malformed.tsdf_tiles.push_back({0, 1, 2, 3, {}});
+  malformed.tsdf_tiles.push_back({0, 1, 2, 3, {}});
+  if(prepare(std::move(malformed)))
+    return 16;
+
   return 0;
 }

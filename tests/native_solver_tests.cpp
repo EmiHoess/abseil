@@ -47,6 +47,23 @@ int main()
   require(solved->iterations.front().linear_solver_seconds >= 0.0 &&
     solved->iterations.front().iteration_seconds >= 0.0,
     "native timing telemetry");
+  const auto repeated = seil::detail::solve_native_cpu(problem, {}, {});
+  require(repeated.has_value() && repeated->poses.size() == solved->poses.size() &&
+    std::abs(repeated->final_cost.total() - solved->final_cost.total()) < 1.0e-12 &&
+    std::abs(repeated->poses[1].x - solved->poses[1].x) < 1.0e-12,
+    "native solve is deterministic");
+
+  seil::common_options bounded;
+  bounded.maximum_iterations = 1;
+  seil::native_cpu_options bounded_options;
+  bounded_options.lm.minimum_cost_change = 0.0;
+  bounded_options.lm.minimum_gradient_norm = 0.0;
+  bounded_options.lm.minimum_update_norm = 0.0;
+  auto bounded_result = seil::detail::solve_native_cpu(
+    problem, bounded, bounded_options);
+  require(bounded_result.has_value() &&
+    bounded_result->stop == seil::termination::maximum_iterations,
+    "maximum iteration termination");
 
   problem = chain(false);
   solved = seil::detail::solve_native_cpu(problem, {}, {});
@@ -78,4 +95,10 @@ int main()
   state.rejected_steps = 8;
   require(seil::detail::native_termination(state, {}, {}).value() ==
     seil::termination::rejection_limit, "rejection termination policy");
+  state.accepted = true;
+  state.rejected_steps = 0;
+  state.update_norm = 1.0;
+  state.cost_change = 0.0;
+  require(seil::detail::native_termination(state, {}, {}).value() ==
+    seil::termination::converged_cost, "cost termination policy");
 }

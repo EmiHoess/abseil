@@ -47,6 +47,8 @@ int main()
   auto solved = seil::solve(prepared, {});
   require(solved.has_value() && solved->stop == seil::termination::no_free_nodes,
     "native dispatch");
+  require(solved->poses.size() == prepared.node_count(),
+    "native result pose count");
   seil::solve_options mismatch;
   mismatch.specific = seil::ceres_cpu_options{};
   require(!seil::solve(prepared, mismatch), "backend option mismatch");

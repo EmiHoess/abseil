@@ -31,6 +31,8 @@ seil::prepared_problem field_problem()
         tsdf.voxels[index] = {distance, 2.0F, 1U};
         esdf.voxels[index] = {distance, 1U};
       }
+  tsdf.voxels[6U + 8U * (6U + 8U * 6U)].flags = 0;
+  esdf.voxels[6U + 8U * (6U + 8U * 6U)].flags = 0;
   value.tsdf_tiles.push_back(tsdf);
   value.esdf_tiles.push_back(esdf);
   tsdf.x = -1;
@@ -81,4 +83,7 @@ int main()
   auto bad_volume = seil::query_field(problem, seil::field_kind::esdf, 4,
     {}, seil::field_interpolation::nearest);
   require(!bad_volume.has_value(), "invalid volume rejected");
+  auto unobserved = seil::query_field(problem, seil::field_kind::tsdf, 0,
+    {6.2, 6.2, 6.2}, seil::field_interpolation::nearest, false);
+  require(!unobserved.has_value(), "unobserved voxel rejected");
 }

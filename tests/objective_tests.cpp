@@ -95,6 +95,19 @@ int main()
         "left relative jacobian");
     }
   }
+  for(std::size_t column = 0; column < 4; ++column) {
+    seil::pose4 moved = right;
+    adjust(moved, column, step);
+    const auto plus = residual(left, moved, measured);
+    moved = right;
+    adjust(moved, column, -step);
+    const auto minus = residual(left, moved, measured);
+    for(std::size_t output = 0; output < 4; ++output) {
+      const double numerical = (plus[output] - minus[output]) / (2.0 * step);
+      require(std::abs(numerical - row.jacobian_j[output * 4U + column]) < 1.0e-6,
+        "right relative jacobian");
+    }
+  }
 
   seil::problem graph;
   graph.nodes.push_back({1, left, true});

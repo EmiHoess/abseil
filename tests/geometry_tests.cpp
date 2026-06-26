@@ -1,6 +1,7 @@
 #include <seil/geometry.hpp>
 
 #include <cmath>
+#include <limits>
 #include <numbers>
 
 namespace {
@@ -23,6 +24,11 @@ int main()
 
   if(!close(wrap_yaw(3.0 * std::numbers::pi_v<double>), std::numbers::pi_v<double>))
     return 2;
+  const double below_boundary = wrap_yaw(-std::numbers::pi_v<double> - 1.0e-9);
+  const double above_boundary = wrap_yaw(std::numbers::pi_v<double> + 1.0e-9);
+  if(!close(below_boundary, std::numbers::pi_v<double> - 1.0e-9, 1.0e-10) ||
+    !close(above_boundary, -std::numbers::pi_v<double> + 1.0e-9, 1.0e-10))
+    return 6;
 
   const pose4 left{1.0, 2.0, -1.0, std::numbers::pi_v<double> / 2.0};
   const pose4 right{2.0, 0.0, 3.0, -0.25};
@@ -41,6 +47,9 @@ int main()
 
   if(!finite_pose(left) || !finite_vector(point))
     return 5;
+  if(finite_pose({std::numeric_limits<double>::infinity(), 0.0, 0.0, 0.0}) ||
+    finite_vector({0.0, std::numeric_limits<double>::quiet_NaN(), 0.0}))
+    return 7;
 
   return 0;
 }
