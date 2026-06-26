@@ -23,7 +23,7 @@ int main(int argc, char** argv)
 {
   require(argc == 2, "benchmark executable argument");
   const std::string executable = argv[1];
-  require(invoke(executable, "native_cpu 5 2") == 0,
+  require(invoke(executable, "native_cpu 5 2 1") == 0,
     "valid benchmark invocation");
   require(invoke(executable, "unknown 5 2") != 0,
     "unknown backend rejection");
@@ -31,4 +31,6 @@ int main(int argc, char** argv)
     "invalid node count rejection");
   require(invoke(executable, "native_cpu 5 0") != 0,
     "zero repetitions rejection");
+  require(invoke(executable, "native_cpu 5 2 one") != 0,
+    "invalid warm-up count rejection");
 }

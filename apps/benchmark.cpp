@@ -1,5 +1,6 @@
 #include <seil/seil.hpp>
 
+#include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <cmath>
@@ -17,6 +18,7 @@ struct benchmark_config {
   seil::backend selected_backend{seil::backend::native_cpu};
   std::size_t nodes{36};
   std::size_t repetitions{7};
+  std::size_t warmups{2};
 };
 
 struct benchmark_record {
@@ -49,7 +51,7 @@ seil::operation_result<std::size_t> parse_count(
 
 seil::operation_result<benchmark_config> parse_config(int argc, char** argv)
 {
-  if(argc > 4)
+  if(argc > 5)
     return std::unexpected(benchmark_error("too many arguments"));
   benchmark_config output;
   if(argc > 1) {
@@ -69,6 +71,12 @@ seil::operation_result<benchmark_config> parse_config(int argc, char** argv)
     if(!repetitions)
       return std::unexpected(std::move(repetitions.error()));
     output.repetitions = *repetitions;
+  }
+  if(argc > 4) {
+    auto warmups = parse_count(argv[4], "warm-up count");
+    if(!warmups)
+      return std::unexpected(std::move(warmups.error()));
+    output.warmups = *warmups;
   }
   if(output.nodes < 2)
     return std::unexpected(benchmark_error("node count must be at least two"));
@@ -147,12 +155,28 @@ seil::operation_result<benchmark_record> measured_run(
     solved->stop};
 }
 
-double average(const std::vector<double>& values)
+double percentile(std::vector<double> values, double quantile)
 {
-  double total = 0.0;
-  for(double value : values)
-    total += value;
-  return total / static_cast<double>(values.size());
+  std::sort(values.begin(), values.end());
+  const double rank = std::ceil(quantile * static_cast<double>(values.size()));
+  const std::size_t index = std::min(values.size() - 1,
+    static_cast<std::size_t>(std::max(1.0, rank)) - 1);
+  return values[index];
+}
+
+template<class projection_type>
+void print_summary(
+  std::string_view name,
+  const std::vector<benchmark_record>& records,
+  projection_type projection
+)
+{
+  std::vector<double> values;
+  values.reserve(records.size());
+  for(const auto& record : records)
+    values.push_back(projection(record));
+  std::cout << ' ' << name << "_median=" << percentile(values, 0.5)
+    << ' ' << name << "_p95=" << percentile(values, 0.95);
 }
 
 int run(int argc, char** argv)
@@ -163,6 +187,13 @@ int run(int argc, char** argv)
     return EXIT_FAILURE;
   }
   std::string hash;
+  for(std::size_t index = 0; index < config->warmups; ++index) {
+    auto record = measured_run(*config, hash);
+    if(!record) {
+      std::cerr << "seil_benchmark: " << record.error().message << '\n';
+      return EXIT_FAILURE;
+    }
+  }
   std::vector<benchmark_record> records;
   records.reserve(config->repetitions);
   for(std::size_t index = 0; index < config->repetitions; ++index) {
@@ -173,28 +204,26 @@ int run(int argc, char** argv)
     }
     records.push_back(*record);
   }
-  std::vector<double> preparation;
-  std::vector<double> total;
-  for(const auto& record : records) {
-    preparation.push_back(record.preparation_ms);
-    total.push_back(record.telemetry.total_ms);
-  }
   const auto& last = records.back();
   std::cout << std::fixed << std::setprecision(3)
     << "backend=" << seil::backend_name(config->selected_backend)
     << " nodes=" << config->nodes
     << " repetitions=" << config->repetitions
-    << " hash=" << hash
-    << " preparation_ms=" << average(preparation)
-    << " solve_ms=" << average(total)
-    << " upload_ms=" << last.telemetry.upload_ms
-    << " evaluation_ms=" << last.telemetry.evaluation_ms
-    << " assembly_ms=" << last.telemetry.assembly_ms
-    << " linear_ms=" << last.telemetry.linear_solver_ms
-    << " update_ms=" << last.telemetry.update_ms
-    << " synchronization_ms=" << last.telemetry.synchronization_ms
-    << " download_ms=" << last.telemetry.download_ms
-    << " h2d_bytes=" << last.telemetry.host_to_device_bytes
+    << " warmups=" << config->warmups
+    << " hash=" << hash;
+  print_summary("preparation_ms", records,
+    [](const auto& value) { return value.preparation_ms; });
+  print_summary("transfer_ms", records, [](const auto& value) {
+    return value.telemetry.upload_ms + value.telemetry.download_ms;
+  });
+  print_summary("solve_ms", records,
+    [](const auto& value) { return value.telemetry.total_ms; });
+  print_summary("synchronization_ms", records,
+    [](const auto& value) { return value.telemetry.synchronization_ms; });
+  print_summary("total_ms", records, [](const auto& value) {
+    return value.preparation_ms + value.telemetry.total_ms;
+  });
+  std::cout << " h2d_bytes=" << last.telemetry.host_to_device_bytes
     << " d2h_bytes=" << last.telemetry.device_to_host_bytes
     << " peak_device_bytes=" << last.telemetry.peak_device_bytes
     << " synchronizations=" << last.telemetry.synchronization_count
