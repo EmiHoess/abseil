@@ -103,6 +103,10 @@ void verify_cuda_snapshot(const std::vector<borrowed_voxel>& source)
   auto solved = seil::solve_cuda_checked(*prepared, {}, options);
   require(solved.has_value() && solved->registration.accepted_rows == 1,
     "CUDA resident field read");
+  options.device_index = 1;
+  solved = seil::solve_cuda_checked(*prepared, {}, options);
+  require(!solved && solved.error().stage == seil::operation_stage::validation,
+    "CUDA resident device mismatch");
 }
 #endif
 
@@ -119,6 +123,14 @@ int main()
     {2.2, 3.2, 4.2}, seil::field_interpolation::nearest, false);
   require(query.has_value() && std::abs(query->sample.distance - 2.0) < 1.0e-12 &&
     query->sample.weight == 3.0, "borrowed field read");
+  if(seil::backend_available(seil::backend::ceres_cpu)) {
+    seil::solve_options options;
+    options.selected_backend = seil::backend::ceres_cpu;
+    options.specific = seil::ceres_cpu_options{};
+    auto rejected = seil::solve(*prepared, options);
+    require(!rejected && rejected.error().stage == seil::operation_stage::validation,
+      "Ceres borrowed fields rejected");
+  }
 
   const std::string first_hash = prepared->hash();
   fields->tiles[0].content_generation = 2;

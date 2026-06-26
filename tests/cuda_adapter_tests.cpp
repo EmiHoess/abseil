@@ -113,6 +113,25 @@ int main()
       &iteration_count) == 0 && iteration_count == 1,
       "CUDA iteration count");
     require(seil_cuda_destroy(context) == 0, "CUDA context cleanup");
+
+    options.reduction_policy = seil_cuda_reduction_atomic_fast;
+    context = nullptr;
+    require(seil_cuda_create(&options, &context) == 0 && context != nullptr,
+      "atomic CUDA context creation");
+    require(seil_cuda_upload_problem(context, &packed->view) == 0,
+      "atomic CUDA snapshot upload");
+    seil_cuda_summary atomic_summary{};
+    require(seil_cuda_solve_stage(context, &atomic_summary) == 0 &&
+      std::abs(atomic_summary.initial_relative_cost -
+        summary.initial_relative_cost) < 1.0e-10 &&
+      std::abs(atomic_summary.final_relative_cost -
+        summary.final_relative_cost) < 1.0e-10,
+      "atomic CUDA reduction parity");
+    require(seil_cuda_destroy(context) == 0, "atomic CUDA context cleanup");
+
+    options.abi_version = 0;
+    require(seil_cuda_create(&options, &context) != 0 && context == nullptr,
+      "CUDA ABI mismatch rejection");
   }
 #endif
 }

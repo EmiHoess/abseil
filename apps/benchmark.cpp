@@ -111,7 +111,7 @@ seil::problem chain_problem(std::size_t count)
   return value;
 }
 
-seil::solve_options solver_options(seil::backend selected)
+seil::solve_options solver_options(seil::backend selected, std::size_t nodes)
 {
   seil::solve_options options;
   options.selected_backend = selected;
@@ -119,6 +119,8 @@ seil::solve_options solver_options(seil::backend selected)
   switch(selected) {
     case seil::backend::native_cpu:
       options.specific = seil::native_cpu_options{};
+      std::get<seil::native_cpu_options>(options.specific).
+        lm.pcg_maximum_iterations = std::max<std::size_t>(256, nodes * 12);
       break;
     case seil::backend::ceres_cpu:
       options.specific = seil::ceres_cpu_options{};
@@ -145,7 +147,8 @@ seil::operation_result<benchmark_record> measured_run(
     hash = prepared->hash();
   else if(hash != prepared->hash())
     return std::unexpected(benchmark_error("prepared problem hash changed"));
-  auto solved = seil::solve(*prepared, solver_options(config.selected_backend));
+  auto solved = seil::solve(*prepared,
+    solver_options(config.selected_backend, config.nodes));
   if(!solved)
     return std::unexpected(std::move(solved.error()));
   if(!solved->solution_usable)

@@ -258,7 +258,8 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
 
 bool cuda_backend_available() noexcept
 {
-  return true;
+  std::int32_t count = 0;
+  return seil_cuda_device_count(&count) == 0 && count > 0;
 }
 
 operation_result<solve_result> solve_native_cuda_cold(
