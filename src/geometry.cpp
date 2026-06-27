@@ -1,9 +1,9 @@
-#include <seil/geometry.hpp>
+#include <abseil/geometry.hpp>
 
 #include <cmath>
 #include <numbers>
 
-namespace seil {
+namespace abseil {
 
 matrix4 identity_matrix4(double diagonal) noexcept
 {

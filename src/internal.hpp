@@ -1,9 +1,9 @@
 #pragma once
 
-#include <seil/problem.hpp>
-#include <seil/field.hpp>
-#include <seil/field_views.hpp>
-#include <seil/solver.hpp>
+#include <abseil/problem.hpp>
+#include <abseil/field.hpp>
+#include <abseil/field_views.hpp>
+#include <abseil/solver.hpp>
 
 #include <array>
 #include <cstddef>
@@ -15,7 +15,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace seil::detail {
+namespace abseil::detail {
 
 struct graph_component {
   bool has_active{};

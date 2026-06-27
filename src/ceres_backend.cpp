@@ -1,6 +1,6 @@
 #include "internal.hpp"
 
-#include <seil/objective.hpp>
+#include <abseil/objective.hpp>
 
 #include <ceres/ceres.h>
 #include <ceres/version.h>
@@ -13,7 +13,7 @@
 #include <memory>
 #include <vector>
 
-namespace seil::detail {
+namespace abseil::detail {
 namespace {
 
 class pose4_manifold final : public ceres::Manifold {

@@ -5,7 +5,7 @@
 #include <array>
 #include <limits>
 
-namespace seil::detail {
+namespace abseil::detail {
 namespace {
 
 operation_error packing_error(std::string message)
@@ -14,17 +14,17 @@ operation_error packing_error(std::string message)
     std::move(message)};
 }
 
-seil_cuda_loss pack_loss(const loss& value)
+abseil_cuda_loss pack_loss(const loss& value)
 {
   return {static_cast<std::uint32_t>(value.kind), value.scale};
 }
 
-seil_cuda_pose4 pack_pose(const pose4& value)
+abseil_cuda_pose4 pack_pose(const pose4& value)
 {
   return {value.x, value.y, value.z, value.yaw};
 }
 
-operation_result<seil_cuda_edge> pack_edge(
+operation_result<abseil_cuda_edge> pack_edge(
   const topology_index& topology,
   std::size_t node_i,
   std::size_t node_j,
@@ -42,7 +42,7 @@ operation_result<seil_cuda_edge> pack_edge(
   const std::int32_t active_i = topology.active_node[node_i];
   const std::int32_t active_j = topology.active_node[node_j];
   const bool transpose = active_i > active_j;
-  seil_cuda_edge output{};
+  abseil_cuda_edge output{};
   output.node_i = *left;
   output.node_j = *right;
   output.slot_ii = sparse_slot(topology, active_i, active_i);
@@ -164,7 +164,7 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
   }
   output.tsdf_tiles.reserve(storage->value.tsdf_tiles.size());
   for(const auto& tile : storage->value.tsdf_tiles) {
-    seil_cuda_tsdf_tile packed{};
+    abseil_cuda_tsdf_tile packed{};
     auto volume = cuda_packing::index(tile.volume);
     if(!volume)
       return std::unexpected(std::move(volume.error()));
@@ -179,7 +179,7 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
   }
   output.esdf_tiles.reserve(storage->value.esdf_tiles.size());
   for(const auto& tile : storage->value.esdf_tiles) {
-    seil_cuda_esdf_tile packed{};
+    abseil_cuda_esdf_tile packed{};
     auto volume = cuda_packing::index(tile.volume);
     if(!volume)
       return std::unexpected(std::move(volume.error()));
@@ -197,7 +197,7 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
       auto volume = cuda_packing::index(tile.volume);
       if(!volume)
         return std::unexpected(std::move(volume.error()));
-      seil_cuda_field_tile packed{
+      abseil_cuda_field_tile packed{
         *volume, tile.x, tile.y, tile.z,
         reinterpret_cast<const unsigned char*>(tile.distance),
         reinterpret_cast<const unsigned char*>(tile.weight),
@@ -215,17 +215,17 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
     output.sparse_slots.push_back({slot.row, slot.column});
 
   const std::array ranges{
-    std::pair{output.nodes.size(), sizeof(seil_cuda_node)},
-    std::pair{output.relative_edges.size(), sizeof(seil_cuda_edge)},
-    std::pair{output.absolute_edges.size(), sizeof(seil_cuda_edge)},
-    std::pair{output.registration_groups.size(), sizeof(seil_cuda_registration_group)},
-    std::pair{output.registration_samples.size(), sizeof(seil_cuda_registration_sample)},
-    std::pair{output.volumes.size(), sizeof(seil_cuda_volume)},
-    std::pair{output.tsdf_tiles.size(), sizeof(seil_cuda_tsdf_tile)},
-    std::pair{output.esdf_tiles.size(), sizeof(seil_cuda_esdf_tile)},
-    std::pair{output.resident_tsdf.size(), sizeof(seil_cuda_field_tile)},
-    std::pair{output.resident_esdf.size(), sizeof(seil_cuda_field_tile)},
-    std::pair{output.sparse_slots.size(), sizeof(seil_cuda_sparse_slot)}
+    std::pair{output.nodes.size(), sizeof(abseil_cuda_node)},
+    std::pair{output.relative_edges.size(), sizeof(abseil_cuda_edge)},
+    std::pair{output.absolute_edges.size(), sizeof(abseil_cuda_edge)},
+    std::pair{output.registration_groups.size(), sizeof(abseil_cuda_registration_group)},
+    std::pair{output.registration_samples.size(), sizeof(abseil_cuda_registration_sample)},
+    std::pair{output.volumes.size(), sizeof(abseil_cuda_volume)},
+    std::pair{output.tsdf_tiles.size(), sizeof(abseil_cuda_tsdf_tile)},
+    std::pair{output.esdf_tiles.size(), sizeof(abseil_cuda_esdf_tile)},
+    std::pair{output.resident_tsdf.size(), sizeof(abseil_cuda_field_tile)},
+    std::pair{output.resident_esdf.size(), sizeof(abseil_cuda_field_tile)},
+    std::pair{output.sparse_slots.size(), sizeof(abseil_cuda_sparse_slot)}
   };
   for(const auto& [count_value, element_size] : ranges) {
     auto total = cuda_packing::add_bytes(output.byte_count, count_value, element_size);
@@ -237,8 +237,8 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
   if(!active_count)
     return std::unexpected(std::move(active_count.error()));
   output.view = {
-    seil_cuda_abi_version_value,
-    sizeof(seil_cuda_problem),
+    abseil_cuda_abi_version_value,
+    sizeof(abseil_cuda_problem),
     output.nodes.data(), output.nodes.size(),
     *active_count,
     output.relative_edges.data(), output.relative_edges.size(),
@@ -259,7 +259,7 @@ operation_result<packed_cuda_problem> pack_cuda_problem(
 bool cuda_backend_available() noexcept
 {
   std::int32_t count = 0;
-  return seil_cuda_device_count(&count) == 0 && count > 0;
+  return abseil_cuda_device_count(&count) == 0 && count > 0;
 }
 
 operation_result<solve_result> solve_native_cuda_cold(

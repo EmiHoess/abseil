@@ -1,6 +1,6 @@
 #include "internal.hpp"
 
-#include <seil/field_views.hpp>
+#include <abseil/field_views.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -9,7 +9,7 @@
 #include <set>
 #include <tuple>
 
-namespace seil {
+namespace abseil {
 namespace {
 
 operation_error field_view_error(std::string message)

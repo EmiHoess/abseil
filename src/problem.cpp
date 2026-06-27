@@ -11,7 +11,7 @@
 #include <unordered_set>
 #include <utility>
 
-namespace seil {
+namespace abseil {
 namespace {
 
 class snapshot_hash {

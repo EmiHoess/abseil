@@ -1,13 +1,13 @@
 #pragma once
 
-#include <seil/problem.hpp>
+#include <abseil/problem.hpp>
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
 
-namespace seil {
+namespace abseil {
 
 inline constexpr std::uint32_t field_view_api_version = 1;
 inline constexpr std::uint32_t cuda_registration_coordinate_bits = 64;

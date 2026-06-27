@@ -1,23 +1,23 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(seil VERSION 0.1.0 LANGUAGES CXX)
+project(abseil VERSION 0.1.0 LANGUAGES CXX)
 
 include(CTest)
 include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
 
-option(seil_build_benchmarks "Build the seil benchmark executable" OFF)
-option(seil_enable_ceres "Build the Ceres CPU backend" OFF)
-option(seil_enable_cuda "Build the cold-snapshot CUDA backend" OFF)
+option(abseil_build_benchmarks "Build the abseil benchmark executable" OFF)
+option(abseil_enable_ceres "Build the Ceres CPU backend" OFF)
+option(abseil_enable_cuda "Build the cold-snapshot CUDA backend" OFF)
 
 if(MSVC)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
-  if(seil_enable_ceres)
+  if(abseil_enable_ceres)
     add_compile_definitions(_ITERATOR_DEBUG_LEVEL=0)
   endif()
 endif()
 
-add_library(seil STATIC
+add_library(abseil STATIC
   src/backend_dispatch.cpp
   src/field.cpp
   src/field_views.cpp
@@ -28,152 +28,152 @@ add_library(seil STATIC
   src/problem.cpp
   src/sparse_system.cpp
 )
-add_library(seil::seil ALIAS seil)
+add_library(abseil::abseil ALIAS abseil)
 
-if(MSVC AND seil_enable_ceres)
-  target_compile_definitions(seil PUBLIC _ITERATOR_DEBUG_LEVEL=0)
+if(MSVC AND abseil_enable_ceres)
+  target_compile_definitions(abseil PUBLIC _ITERATOR_DEBUG_LEVEL=0)
 endif()
 
-if(seil_enable_ceres)
+if(abseil_enable_ceres)
   find_package(Ceres CONFIG REQUIRED)
-  target_sources(seil PRIVATE src/ceres_backend.cpp)
-  target_link_libraries(seil PUBLIC Ceres::ceres)
-  target_compile_definitions(seil PRIVATE SEIL_HAS_CERES=1)
+  target_sources(abseil PRIVATE src/ceres_backend.cpp)
+  target_link_libraries(abseil PUBLIC Ceres::ceres)
+  target_compile_definitions(abseil PRIVATE ABSEIL_HAS_CERES=1)
 else()
-  target_sources(seil PRIVATE src/ceres_stub.cpp)
+  target_sources(abseil PRIVATE src/ceres_stub.cpp)
 endif()
 
-if(seil_enable_cuda)
+if(abseil_enable_cuda)
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
-  target_sources(seil PRIVATE
+  target_sources(abseil PRIVATE
     src/cuda_backend.cpp
     src/cuda_checked.cpp
     src/native_cuda_cold/solver.cu
   )
-  target_link_libraries(seil PUBLIC CUDA::cudart)
-  target_compile_definitions(seil PRIVATE SEIL_HAS_CUDA=1)
-  set_target_properties(seil PROPERTIES
+  target_link_libraries(abseil PUBLIC CUDA::cudart)
+  target_compile_definitions(abseil PRIVATE ABSEIL_HAS_CUDA=1)
+  set_target_properties(abseil PROPERTIES
     CUDA_STANDARD 20
     CUDA_STANDARD_REQUIRED YES
     CUDA_SEPARABLE_COMPILATION ON
     CUDA_RESOLVE_DEVICE_SYMBOLS ON
   )
 else()
-  target_sources(seil PRIVATE src/cuda_stub.cpp)
+  target_sources(abseil PRIVATE src/cuda_stub.cpp)
 endif()
 
-target_compile_features(seil PUBLIC cxx_std_23)
-target_include_directories(seil
+target_compile_features(abseil PUBLIC cxx_std_23)
+target_include_directories(abseil
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
-target_compile_options(seil
+target_compile_options(abseil
   PRIVATE
     $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/W4;/permissive->
     $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-Wall;-Wextra;-Wpedantic>
     $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
 )
 
-if(seil_build_benchmarks)
-  add_executable(seil_benchmark apps/benchmark.cpp)
-  target_link_libraries(seil_benchmark PRIVATE seil::seil)
+if(abseil_build_benchmarks)
+  add_executable(abseil_benchmark apps/benchmark.cpp)
+  target_link_libraries(abseil_benchmark PRIVATE abseil::abseil)
 endif()
 
 if(BUILD_TESTING)
-  add_executable(seil_error_tests tests/error_tests.cpp)
-  target_link_libraries(seil_error_tests PRIVATE seil::seil)
-  add_test(NAME seil_error_tests COMMAND seil_error_tests)
+  add_executable(abseil_error_tests tests/error_tests.cpp)
+  target_link_libraries(abseil_error_tests PRIVATE abseil::abseil)
+  add_test(NAME abseil_error_tests COMMAND abseil_error_tests)
 
-  add_executable(seil_geometry_tests tests/geometry_tests.cpp)
-  target_link_libraries(seil_geometry_tests PRIVATE seil::seil)
-  add_test(NAME seil_geometry_tests COMMAND seil_geometry_tests)
+  add_executable(abseil_geometry_tests tests/geometry_tests.cpp)
+  target_link_libraries(abseil_geometry_tests PRIVATE abseil::abseil)
+  add_test(NAME abseil_geometry_tests COMMAND abseil_geometry_tests)
 
-  add_executable(seil_problem_tests tests/problem_tests.cpp)
-  target_link_libraries(seil_problem_tests PRIVATE seil::seil)
-  add_test(NAME seil_problem_tests COMMAND seil_problem_tests)
+  add_executable(abseil_problem_tests tests/problem_tests.cpp)
+  target_link_libraries(abseil_problem_tests PRIVATE abseil::abseil)
+  add_test(NAME abseil_problem_tests COMMAND abseil_problem_tests)
 
-  add_executable(seil_field_tests tests/field_tests.cpp)
-  target_link_libraries(seil_field_tests PRIVATE seil::seil)
-  add_test(NAME seil_field_tests COMMAND seil_field_tests)
+  add_executable(abseil_field_tests tests/field_tests.cpp)
+  target_link_libraries(abseil_field_tests PRIVATE abseil::abseil)
+  add_test(NAME abseil_field_tests COMMAND abseil_field_tests)
 
-  add_executable(seil_objective_tests tests/objective_tests.cpp)
-  target_link_libraries(seil_objective_tests PRIVATE seil::seil)
-  add_test(NAME seil_objective_tests COMMAND seil_objective_tests)
+  add_executable(abseil_objective_tests tests/objective_tests.cpp)
+  target_link_libraries(abseil_objective_tests PRIVATE abseil::abseil)
+  add_test(NAME abseil_objective_tests COMMAND abseil_objective_tests)
 
-  add_executable(seil_sparse_system_tests tests/sparse_system_tests.cpp)
-  target_link_libraries(seil_sparse_system_tests PRIVATE seil::seil)
-  add_test(NAME seil_sparse_system_tests COMMAND seil_sparse_system_tests)
+  add_executable(abseil_sparse_system_tests tests/sparse_system_tests.cpp)
+  target_link_libraries(abseil_sparse_system_tests PRIVATE abseil::abseil)
+  add_test(NAME abseil_sparse_system_tests COMMAND abseil_sparse_system_tests)
 
-  add_executable(seil_linear_solver_tests tests/linear_solver_tests.cpp)
-  target_link_libraries(seil_linear_solver_tests PRIVATE seil::seil)
-  add_test(NAME seil_linear_solver_tests COMMAND seil_linear_solver_tests)
+  add_executable(abseil_linear_solver_tests tests/linear_solver_tests.cpp)
+  target_link_libraries(abseil_linear_solver_tests PRIVATE abseil::abseil)
+  add_test(NAME abseil_linear_solver_tests COMMAND abseil_linear_solver_tests)
 
-  add_executable(seil_native_solver_tests tests/native_solver_tests.cpp)
-  target_link_libraries(seil_native_solver_tests PRIVATE seil::seil)
-  add_test(NAME seil_native_solver_tests COMMAND seil_native_solver_tests)
+  add_executable(abseil_native_solver_tests tests/native_solver_tests.cpp)
+  target_link_libraries(abseil_native_solver_tests PRIVATE abseil::abseil)
+  add_test(NAME abseil_native_solver_tests COMMAND abseil_native_solver_tests)
 
-  add_executable(seil_backend_dispatch_tests tests/backend_dispatch_tests.cpp)
-  target_link_libraries(seil_backend_dispatch_tests PRIVATE seil::seil)
-  add_test(NAME seil_backend_dispatch_tests COMMAND seil_backend_dispatch_tests)
+  add_executable(abseil_backend_dispatch_tests tests/backend_dispatch_tests.cpp)
+  target_link_libraries(abseil_backend_dispatch_tests PRIVATE abseil::abseil)
+  add_test(NAME abseil_backend_dispatch_tests COMMAND abseil_backend_dispatch_tests)
 
-  add_executable(seil_backend_parity_tests tests/backend_parity_tests.cpp)
-  target_link_libraries(seil_backend_parity_tests PRIVATE seil::seil)
-  add_test(NAME seil_backend_parity_tests COMMAND seil_backend_parity_tests)
+  add_executable(abseil_backend_parity_tests tests/backend_parity_tests.cpp)
+  target_link_libraries(abseil_backend_parity_tests PRIVATE abseil::abseil)
+  add_test(NAME abseil_backend_parity_tests COMMAND abseil_backend_parity_tests)
 
-  add_executable(seil_cuda_adapter_tests tests/cuda_adapter_tests.cpp)
-  target_link_libraries(seil_cuda_adapter_tests PRIVATE seil::seil)
-  if(seil_enable_cuda)
-    target_compile_definitions(seil_cuda_adapter_tests PRIVATE SEIL_HAS_CUDA=1)
+  add_executable(abseil_cuda_adapter_tests tests/cuda_adapter_tests.cpp)
+  target_link_libraries(abseil_cuda_adapter_tests PRIVATE abseil::abseil)
+  if(abseil_enable_cuda)
+    target_compile_definitions(abseil_cuda_adapter_tests PRIVATE ABSEIL_HAS_CUDA=1)
   endif()
-  add_test(NAME seil_cuda_adapter_tests COMMAND seil_cuda_adapter_tests)
+  add_test(NAME abseil_cuda_adapter_tests COMMAND abseil_cuda_adapter_tests)
 
-  add_executable(seil_field_view_tests tests/field_view_tests.cpp)
-  target_link_libraries(seil_field_view_tests PRIVATE seil::seil)
-  if(seil_enable_cuda)
-    target_compile_definitions(seil_field_view_tests PRIVATE SEIL_HAS_CUDA=1)
+  add_executable(abseil_field_view_tests tests/field_view_tests.cpp)
+  target_link_libraries(abseil_field_view_tests PRIVATE abseil::abseil)
+  if(abseil_enable_cuda)
+    target_compile_definitions(abseil_field_view_tests PRIVATE ABSEIL_HAS_CUDA=1)
   endif()
-  add_test(NAME seil_field_view_tests COMMAND seil_field_view_tests)
+  add_test(NAME abseil_field_view_tests COMMAND abseil_field_view_tests)
 
-  if(seil_build_benchmarks)
-    add_executable(seil_benchmark_cli_tests tests/benchmark_cli_tests.cpp)
-    add_dependencies(seil_benchmark_cli_tests seil_benchmark)
-    add_test(NAME seil_benchmark_cli_tests
-      COMMAND seil_benchmark_cli_tests $<TARGET_FILE:seil_benchmark>)
+  if(abseil_build_benchmarks)
+    add_executable(abseil_benchmark_cli_tests tests/benchmark_cli_tests.cpp)
+    add_dependencies(abseil_benchmark_cli_tests abseil_benchmark)
+    add_test(NAME abseil_benchmark_cli_tests
+      COMMAND abseil_benchmark_cli_tests $<TARGET_FILE:abseil_benchmark>)
   endif()
 endif()
 
-set(seil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/seil")
+set(abseil_cmake_install_dir "${CMAKE_INSTALL_LIBDIR}/cmake/abseil")
 
-install(TARGETS seil
-  EXPORT seil_targets
+install(TARGETS abseil
+  EXPORT abseil_targets
   INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-install(EXPORT seil_targets
-  FILE seilTargets.cmake
-  NAMESPACE seil::
-  DESTINATION ${seil_cmake_install_dir}
+install(EXPORT abseil_targets
+  FILE abseilTargets.cmake
+  NAMESPACE abseil::
+  DESTINATION ${abseil_cmake_install_dir}
 )
 
 configure_package_config_file(
-  cmake/seilConfig.cmake.in
-  ${CMAKE_CURRENT_BINARY_DIR}/seilConfig.cmake
-  INSTALL_DESTINATION ${seil_cmake_install_dir}
+  cmake/abseilConfig.cmake.in
+  ${CMAKE_CURRENT_BINARY_DIR}/abseilConfig.cmake
+  INSTALL_DESTINATION ${abseil_cmake_install_dir}
 )
 
 write_basic_package_version_file(
-  ${CMAKE_CURRENT_BINARY_DIR}/seilConfigVersion.cmake
+  ${CMAKE_CURRENT_BINARY_DIR}/abseilConfigVersion.cmake
   VERSION ${PROJECT_VERSION}
   COMPATIBILITY SameMajorVersion
 )
 
 install(FILES
-  ${CMAKE_CURRENT_BINARY_DIR}/seilConfig.cmake
-  ${CMAKE_CURRENT_BINARY_DIR}/seilConfigVersion.cmake
-  DESTINATION ${seil_cmake_install_dir}
+  ${CMAKE_CURRENT_BINARY_DIR}/abseilConfig.cmake
+  ${CMAKE_CURRENT_BINARY_DIR}/abseilConfigVersion.cmake
+  DESTINATION ${abseil_cmake_install_dir}
 )

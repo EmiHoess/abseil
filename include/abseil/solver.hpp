@@ -1,6 +1,6 @@
 #pragma once
 
-#include <seil/problem.hpp>
+#include <abseil/problem.hpp>
 
 #include <array>
 #include <cstddef>
@@ -10,7 +10,7 @@
 #include <variant>
 #include <vector>
 
-namespace seil {
+namespace abseil {
 
 enum class backend : std::uint32_t {
   native_cpu,

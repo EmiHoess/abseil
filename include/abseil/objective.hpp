@@ -1,11 +1,11 @@
 #pragma once
 
-#include <seil/problem.hpp>
-#include <seil/solver.hpp>
+#include <abseil/problem.hpp>
+#include <abseil/solver.hpp>
 
 #include <span>
 
-namespace seil {
+namespace abseil {
 
 struct robust_evaluation {
   double cost{};

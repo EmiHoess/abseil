@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace seil::detail {
+namespace abseil::detail {
 
 std::int32_t sparse_slot(
   const topology_index& topology,

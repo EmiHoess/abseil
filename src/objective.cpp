@@ -1,13 +1,13 @@
 #include "internal.hpp"
 #include "sparse_system.hpp"
 
-#include <seil/objective.hpp>
+#include <abseil/objective.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <utility>
 
-namespace seil::detail {
+namespace abseil::detail {
 
 double robust_cost(const loss& robust_loss, double residual) noexcept
 {
@@ -389,7 +389,7 @@ operation_result<objective_equations> assemble_objective(
 
 }
 
-namespace seil {
+namespace abseil {
 
 operation_result<robust_evaluation> evaluate_loss(
   const loss& robust_loss,

@@ -1,10 +1,10 @@
-#include <seil/error.hpp>
+#include <abseil/error.hpp>
 
 #include <string_view>
 
 int main()
 {
-  using namespace seil;
+  using namespace abseil;
 
   operation_result<int> value{7};
   if(!value || *value != 7)

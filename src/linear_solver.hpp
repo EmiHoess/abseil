@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace seil::detail {
+namespace abseil::detail {
 
 struct linear_solution {
   termination stop{termination::numerical_breakdown};

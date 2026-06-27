@@ -6,15 +6,15 @@
 
 #include <cmath>
 
-struct seil_cuda_field_query {
+struct abseil_cuda_field_query {
   double distance;
   double weight;
   double gradient[3];
   bool gradient_valid;
 };
 
-__device__ inline bool seil_read_field(
-  const seil_cuda_field_tile& tile,
+__device__ inline bool abseil_read_field(
+  const abseil_cuda_field_tile& tile,
   size_t local,
   double* distance,
   double* weight
@@ -44,7 +44,7 @@ __device__ inline bool seil_read_field(
   return true;
 }
 
-__device__ inline int seil_floor_divide(int value, int divisor)
+__device__ inline int abseil_floor_divide(int value, int divisor)
 {
   int quotient = value / divisor;
   if(value % divisor < 0)
@@ -52,57 +52,57 @@ __device__ inline int seil_floor_divide(int value, int divisor)
   return quotient;
 }
 
-__device__ inline int seil_floor_modulo(int value, int divisor)
+__device__ inline int abseil_floor_modulo(int value, int divisor)
 {
   const int remainder = value % divisor;
   return remainder < 0 ? remainder + divisor : remainder;
 }
 
-__device__ inline bool seil_lookup_field(
+__device__ inline bool abseil_lookup_field(
   uint32_t field,
   int32_t volume,
   int x,
   int y,
   int z,
-  const seil_cuda_field_tile* tsdf_views,
+  const abseil_cuda_field_tile* tsdf_views,
   size_t tsdf_view_count,
-  const seil_cuda_field_tile* esdf_views,
+  const abseil_cuda_field_tile* esdf_views,
   size_t esdf_view_count,
   double* distance,
   double* weight
 )
 {
-  const int tile_x = seil_floor_divide(x, seil_cuda_tile_edge);
-  const int tile_y = seil_floor_divide(y, seil_cuda_tile_edge);
-  const int tile_z = seil_floor_divide(z, seil_cuda_tile_edge);
-  const size_t local = static_cast<size_t>(seil_floor_modulo(x, 8)) +
-    8U * (static_cast<size_t>(seil_floor_modulo(y, 8)) +
-    8U * static_cast<size_t>(seil_floor_modulo(z, 8)));
-  const seil_cuda_field_tile* views = field == seil_cuda_field_tsdf ?
+  const int tile_x = abseil_floor_divide(x, abseil_cuda_tile_edge);
+  const int tile_y = abseil_floor_divide(y, abseil_cuda_tile_edge);
+  const int tile_z = abseil_floor_divide(z, abseil_cuda_tile_edge);
+  const size_t local = static_cast<size_t>(abseil_floor_modulo(x, 8)) +
+    8U * (static_cast<size_t>(abseil_floor_modulo(y, 8)) +
+    8U * static_cast<size_t>(abseil_floor_modulo(z, 8)));
+  const abseil_cuda_field_tile* views = field == abseil_cuda_field_tsdf ?
     tsdf_views : esdf_views;
-  const size_t view_count = field == seil_cuda_field_tsdf ?
+  const size_t view_count = field == abseil_cuda_field_tsdf ?
     tsdf_view_count : esdf_view_count;
   for(size_t index = 0; index < view_count; ++index) {
-    const seil_cuda_field_tile& tile = views[index];
+    const abseil_cuda_field_tile& tile = views[index];
     if(tile.volume_index == volume && tile.x == tile_x &&
       tile.y == tile_y && tile.z == tile_z)
-      return seil_read_field(tile, local, distance, weight);
+      return abseil_read_field(tile, local, distance, weight);
   }
   return false;
 }
 
-__device__ inline bool seil_query_trilinear(
+__device__ inline bool abseil_query_trilinear(
   uint32_t field,
   int32_t volume,
   double voxel_size,
   double point_x,
   double point_y,
   double point_z,
-  const seil_cuda_field_tile* tsdf_views,
+  const abseil_cuda_field_tile* tsdf_views,
   size_t tsdf_view_count,
-  const seil_cuda_field_tile* esdf_views,
+  const abseil_cuda_field_tile* esdf_views,
   size_t esdf_view_count,
-  seil_cuda_field_query* output
+  abseil_cuda_field_query* output
 )
 {
   const double coordinate_x = point_x / voxel_size - 0.5;
@@ -119,7 +119,7 @@ __device__ inline bool seil_query_trilinear(
   for(int z = 0; z < 2; ++z)
     for(int y = 0; y < 2; ++y)
       for(int x = 0; x < 2; ++x)
-        if(!seil_lookup_field(field, volume, base_x + x, base_y + y,
+        if(!abseil_lookup_field(field, volume, base_x + x, base_y + y,
           base_z + z, tsdf_views, tsdf_view_count, esdf_views, esdf_view_count,
           &distances[x][y][z], &weights[x][y][z]))
           return false;

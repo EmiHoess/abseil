@@ -5,7 +5,7 @@
 #include <span>
 #include <vector>
 
-namespace seil::detail {
+namespace abseil::detail {
 
 struct sparse_system {
   cost_breakdown cost{};

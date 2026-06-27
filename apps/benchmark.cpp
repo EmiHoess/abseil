@@ -1,4 +1,4 @@
-#include <seil/seil.hpp>
+#include <abseil/abseil.hpp>
 
 #include <algorithm>
 #include <charconv>
@@ -15,7 +15,7 @@
 namespace {
 
 struct benchmark_config {
-  seil::backend selected_backend{seil::backend::native_cpu};
+  abseil::backend selected_backend{abseil::backend::native_cpu};
   std::size_t nodes{36};
   std::size_t repetitions{7};
   std::size_t warmups{2};
@@ -23,20 +23,20 @@ struct benchmark_config {
 
 struct benchmark_record {
   double preparation_ms{};
-  seil::solver_telemetry telemetry{};
-  seil::cost_breakdown initial_cost{};
-  seil::cost_breakdown final_cost{};
+  abseil::solver_telemetry telemetry{};
+  abseil::cost_breakdown initial_cost{};
+  abseil::cost_breakdown final_cost{};
   std::size_t iterations{};
-  seil::termination stop{seil::termination::numerical_breakdown};
+  abseil::termination stop{abseil::termination::numerical_breakdown};
 };
 
-seil::operation_error benchmark_error(std::string message)
+abseil::operation_error benchmark_error(std::string message)
 {
-  return {seil::operation_code::invalid_argument,
-    seil::operation_stage::validation, 0, std::move(message)};
+  return {abseil::operation_code::invalid_argument,
+    abseil::operation_stage::validation, 0, std::move(message)};
 }
 
-seil::operation_result<std::size_t> parse_count(
+abseil::operation_result<std::size_t> parse_count(
   std::string_view text,
   std::string_view name
 )
@@ -49,13 +49,13 @@ seil::operation_result<std::size_t> parse_count(
   return static_cast<std::size_t>(parsed);
 }
 
-seil::operation_result<benchmark_config> parse_config(int argc, char** argv)
+abseil::operation_result<benchmark_config> parse_config(int argc, char** argv)
 {
   if(argc > 5)
     return std::unexpected(benchmark_error("too many arguments"));
   benchmark_config output;
   if(argc > 1) {
-    auto selected = seil::parse_backend(argv[1]);
+    auto selected = abseil::parse_backend(argv[1]);
     if(!selected)
       return std::unexpected(std::move(selected.error()));
     output.selected_backend = *selected;
@@ -82,15 +82,15 @@ seil::operation_result<benchmark_config> parse_config(int argc, char** argv)
     return std::unexpected(benchmark_error("node count must be at least two"));
   if(output.repetitions == 0)
     return std::unexpected(benchmark_error("repetition count must be positive"));
-  if(!seil::backend_available(output.selected_backend))
+  if(!abseil::backend_available(output.selected_backend))
     return std::unexpected(benchmark_error(std::string(
-      seil::backend_name(output.selected_backend)) + " is unavailable"));
+      abseil::backend_name(output.selected_backend)) + " is unavailable"));
   return output;
 }
 
-seil::problem chain_problem(std::size_t count)
+abseil::problem chain_problem(std::size_t count)
 {
-  seil::problem value;
+  abseil::problem value;
   value.nodes.reserve(count);
   value.relative_factors.reserve(count);
   for(std::size_t index = 0; index < count; ++index)
@@ -102,43 +102,43 @@ seil::problem chain_problem(std::size_t count)
   for(std::size_t index = 1; index < count; ++index)
     value.relative_factors.push_back({index - 1, index,
       {1.0, 0.0, 0.0, 0.0}});
-  seil::relative_factor loop;
+  abseil::relative_factor loop;
   loop.node_i = 0;
   loop.node_j = count - 1;
   loop.measured = {static_cast<double>(count - 1), 0.0, 0.0, 0.0};
-  loop.sqrt_information = seil::identity_matrix4(0.25);
+  loop.sqrt_information = abseil::identity_matrix4(0.25);
   value.relative_factors.push_back(loop);
   return value;
 }
 
-seil::solve_options solver_options(seil::backend selected, std::size_t nodes)
+abseil::solve_options solver_options(abseil::backend selected, std::size_t nodes)
 {
-  seil::solve_options options;
+  abseil::solve_options options;
   options.selected_backend = selected;
   options.common.maximum_iterations = 50;
   switch(selected) {
-    case seil::backend::native_cpu:
-      options.specific = seil::native_cpu_options{};
-      std::get<seil::native_cpu_options>(options.specific).
+    case abseil::backend::native_cpu:
+      options.specific = abseil::native_cpu_options{};
+      std::get<abseil::native_cpu_options>(options.specific).
         lm.pcg_maximum_iterations = std::max<std::size_t>(256, nodes * 12);
       break;
-    case seil::backend::ceres_cpu:
-      options.specific = seil::ceres_cpu_options{};
+    case abseil::backend::ceres_cpu:
+      options.specific = abseil::ceres_cpu_options{};
       break;
-    case seil::backend::native_cuda_cold:
-      options.specific = seil::native_cuda_cold_options{};
+    case abseil::backend::native_cuda_cold:
+      options.specific = abseil::native_cuda_cold_options{};
       break;
   }
   return options;
 }
 
-seil::operation_result<benchmark_record> measured_run(
+abseil::operation_result<benchmark_record> measured_run(
   const benchmark_config& config,
   std::string& hash
 )
 {
   const auto started = std::chrono::steady_clock::now();
-  auto prepared = seil::prepare(chain_problem(config.nodes));
+  auto prepared = abseil::prepare(chain_problem(config.nodes));
   if(!prepared)
     return std::unexpected(std::move(prepared.error()));
   const double preparation_ms = std::chrono::duration<double, std::milli>(
@@ -147,7 +147,7 @@ seil::operation_result<benchmark_record> measured_run(
     hash = prepared->hash();
   else if(hash != prepared->hash())
     return std::unexpected(benchmark_error("prepared problem hash changed"));
-  auto solved = seil::solve(*prepared,
+  auto solved = abseil::solve(*prepared,
     solver_options(config.selected_backend, config.nodes));
   if(!solved)
     return std::unexpected(std::move(solved.error()));
@@ -186,14 +186,14 @@ int run(int argc, char** argv)
 {
   auto config = parse_config(argc, argv);
   if(!config) {
-    std::cerr << "seil_benchmark: " << config.error().message << '\n';
+    std::cerr << "abseil_benchmark: " << config.error().message << '\n';
     return EXIT_FAILURE;
   }
   std::string hash;
   for(std::size_t index = 0; index < config->warmups; ++index) {
     auto record = measured_run(*config, hash);
     if(!record) {
-      std::cerr << "seil_benchmark: " << record.error().message << '\n';
+      std::cerr << "abseil_benchmark: " << record.error().message << '\n';
       return EXIT_FAILURE;
     }
   }
@@ -202,14 +202,14 @@ int run(int argc, char** argv)
   for(std::size_t index = 0; index < config->repetitions; ++index) {
     auto record = measured_run(*config, hash);
     if(!record) {
-      std::cerr << "seil_benchmark: " << record.error().message << '\n';
+      std::cerr << "abseil_benchmark: " << record.error().message << '\n';
       return EXIT_FAILURE;
     }
     records.push_back(*record);
   }
   const auto& last = records.back();
   std::cout << std::fixed << std::setprecision(3)
-    << "backend=" << seil::backend_name(config->selected_backend)
+    << "backend=" << abseil::backend_name(config->selected_backend)
     << " nodes=" << config->nodes
     << " repetitions=" << config->repetitions
     << " warmups=" << config->warmups
@@ -233,7 +233,7 @@ int run(int argc, char** argv)
     << " initial_cost=" << last.initial_cost.total()
     << " final_cost=" << last.final_cost.total()
     << " iterations=" << last.iterations
-    << " termination=" << seil::termination_name(last.stop) << '\n';
+    << " termination=" << abseil::termination_name(last.stop) << '\n';
   return EXIT_SUCCESS;
 }
 

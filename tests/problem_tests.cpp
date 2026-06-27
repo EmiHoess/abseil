@@ -1,12 +1,12 @@
-#include <seil/seil.hpp>
+#include <abseil/abseil.hpp>
 
 #include <type_traits>
 
 namespace {
 
-seil::problem anchored_problem(double x)
+abseil::problem anchored_problem(double x)
 {
-  seil::problem value;
+  abseil::problem value;
   value.nodes.push_back({1, {0.0, 0.0, 0.0, 0.0}, true});
   value.nodes.push_back({2, {x, 0.0, 0.0, 0.0}, false});
   value.relative_factors.push_back({0, 1, {1.0, 0.0, 0.0, 0.0}});
@@ -17,7 +17,7 @@ seil::problem anchored_problem(double x)
 
 int main()
 {
-  using namespace seil;
+  using namespace abseil;
 
   static_assert(std::is_same_v<decltype(prepare(problem{})), operation_result<prepared_problem>>);
   static_assert(std::variant_size_v<backend_options> == 3);

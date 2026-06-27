@@ -7,21 +7,21 @@
 #include <limits>
 #include <memory>
 
-namespace seil {
+namespace abseil {
 namespace {
 
 struct context_deleter {
-  void operator()(seil_cuda_context* context) const noexcept
+  void operator()(abseil_cuda_context* context) const noexcept
   {
-    seil_cuda_destroy(context);
+    abseil_cuda_destroy(context);
   }
 };
 
-using owned_context = std::unique_ptr<seil_cuda_context, context_deleter>;
+using owned_context = std::unique_ptr<abseil_cuda_context, context_deleter>;
 
 operation_error cuda_error(operation_stage stage, int status, std::string fallback)
 {
-  const char* native_message = seil_cuda_last_error();
+  const char* native_message = abseil_cuda_last_error();
   std::string message = native_message != nullptr && native_message[0] != '\0' ?
     native_message : std::move(fallback);
   operation_code code = operation_code::cuda_failure;
@@ -49,7 +49,7 @@ bool valid_options(const common_options& common, const native_cuda_cold_options&
     lm.pcg_tolerance > 0.0;
 }
 
-seil_cuda_options pack_options(
+abseil_cuda_options pack_options(
   const detail::prepared_storage& storage,
   const common_options& common,
   const native_cuda_cold_options& options
@@ -58,8 +58,8 @@ seil_cuda_options pack_options(
   const auto& lm = options.lm;
   const auto& registration = storage.value.registration;
   return {
-    seil_cuda_abi_version_value,
-    sizeof(seil_cuda_options),
+    abseil_cuda_abi_version_value,
+    sizeof(abseil_cuda_options),
     options.device_index,
     options.memory_budget_bytes,
     static_cast<std::uint32_t>(std::min<std::size_t>(common.maximum_iterations,
@@ -83,7 +83,7 @@ seil_cuda_options pack_options(
     registration.minimum_gradient_norm,
     registration.maximum_absolute_residual_m,
     registration.allow_nearest_fallback ? 1U : 0U,
-    seil_cuda_reduction_deterministic,
+    abseil_cuda_reduction_deterministic,
     static_cast<std::uint32_t>(registration.profile),
     {static_cast<std::uint32_t>(registration.robust_loss.kind),
       registration.robust_loss.scale}
@@ -92,7 +92,7 @@ seil_cuda_options pack_options(
 
 termination map_termination(std::uint32_t value)
 {
-  if(value <= seil_cuda_numerical_breakdown)
+  if(value <= abseil_cuda_numerical_breakdown)
     return static_cast<termination>(value);
   return termination::numerical_breakdown;
 }
@@ -119,7 +119,7 @@ operation_result<solve_result> solve_cuda_checked(
       "borrowed CUDA fields are not resident on the selected device"});
 
   int32_t device_count = 0;
-  int status = seil_cuda_device_count(&device_count);
+  int status = abseil_cuda_device_count(&device_count);
   if(status != 0)
     return std::unexpected(cuda_error(operation_stage::device_query, status,
       "CUDA device query failed"));
@@ -133,51 +133,51 @@ operation_result<solve_result> solve_cuda_checked(
     return std::unexpected(std::move(packed.error()));
   const double preparation_ms = std::chrono::duration<double, std::milli>(
     std::chrono::steady_clock::now() - preparation_started).count();
-  const seil_cuda_options cuda_options = pack_options(*storage, common, options);
-  seil_cuda_context* raw_context = nullptr;
-  status = seil_cuda_create(&cuda_options, &raw_context);
+  const abseil_cuda_options cuda_options = pack_options(*storage, common, options);
+  abseil_cuda_context* raw_context = nullptr;
+  status = abseil_cuda_create(&cuda_options, &raw_context);
   if(status != 0)
     return std::unexpected(cuda_error(operation_stage::context_create, status,
       "CUDA context creation failed"));
   owned_context context(raw_context);
 
   const auto upload_started = std::chrono::steady_clock::now();
-  status = seil_cuda_upload_problem(context.get(), &packed->view);
+  status = abseil_cuda_upload_problem(context.get(), &packed->view);
   if(status != 0)
     return std::unexpected(cuda_error(operation_stage::upload, status,
       "CUDA snapshot upload failed"));
   const double upload_ms = std::chrono::duration<double, std::milli>(
     std::chrono::steady_clock::now() - upload_started).count();
 
-  seil_cuda_summary summary{};
-  status = seil_cuda_solve_stage(context.get(), &summary);
+  abseil_cuda_summary summary{};
+  status = abseil_cuda_solve_stage(context.get(), &summary);
   if(status != 0)
     return std::unexpected(cuda_error(operation_stage::solve, status,
       "CUDA solve failed"));
 
   size_t pose_count = 0;
-  status = seil_cuda_download_poses(context.get(), nullptr, 0, &pose_count);
+  status = abseil_cuda_download_poses(context.get(), nullptr, 0, &pose_count);
   if(status != 0)
     return std::unexpected(cuda_error(operation_stage::pose_count, status,
       "CUDA pose count failed"));
   if(pose_count != storage->value.nodes.size())
     return std::unexpected(operation_error{operation_code::backend_failure,
       operation_stage::pose_count, 0, "CUDA pose count does not match the problem"});
-  std::vector<seil_cuda_pose4> downloaded_poses(pose_count);
-  status = seil_cuda_download_poses(context.get(), downloaded_poses.data(),
+  std::vector<abseil_cuda_pose4> downloaded_poses(pose_count);
+  status = abseil_cuda_download_poses(context.get(), downloaded_poses.data(),
     downloaded_poses.size(), &pose_count);
   if(status != 0)
     return std::unexpected(cuda_error(operation_stage::pose_download, status,
       "CUDA pose download failed"));
 
   size_t iteration_count = 0;
-  status = seil_cuda_download_iterations(context.get(), nullptr, 0, &iteration_count);
+  status = abseil_cuda_download_iterations(context.get(), nullptr, 0, &iteration_count);
   if(status != 0)
     return std::unexpected(cuda_error(operation_stage::iteration_count, status,
       "CUDA iteration count failed"));
-  std::vector<seil_cuda_iteration> downloaded_iterations(iteration_count);
+  std::vector<abseil_cuda_iteration> downloaded_iterations(iteration_count);
   if(iteration_count != 0) {
-    status = seil_cuda_download_iterations(context.get(),
+    status = abseil_cuda_download_iterations(context.get(),
       downloaded_iterations.data(), downloaded_iterations.size(), &iteration_count);
     if(status != 0)
       return std::unexpected(cuda_error(operation_stage::iteration_download, status,
@@ -219,7 +219,7 @@ operation_result<solve_result> solve_cuda_checked(
   result.telemetry.synchronization_count = summary.synchronization_count;
   result.telemetry.accepted_steps = summary.successful_steps;
   result.telemetry.rejected_steps = summary.unsuccessful_steps;
-  result.telemetry.implementation = "seil_native_cuda_cold";
+  result.telemetry.implementation = "abseil_native_cuda_cold";
   result.telemetry.device = "cuda_device_" + std::to_string(options.device_index);
   result.telemetry.total_ms = std::chrono::duration<double, std::milli>(
     std::chrono::steady_clock::now() - started).count();

@@ -1,10 +1,10 @@
 #include "internal.hpp"
 
-#include <seil/solver.hpp>
+#include <abseil/solver.hpp>
 
 #include <array>
 
-namespace seil {
+namespace abseil {
 namespace {
 
 operation_error dispatch_error(operation_code code, std::string message)

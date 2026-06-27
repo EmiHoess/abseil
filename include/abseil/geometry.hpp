@@ -2,7 +2,7 @@
 
 #include <array>
 
-namespace seil {
+namespace abseil {
 
 struct pose4 {
   double x{};

@@ -5,7 +5,7 @@
 #include <cmath>
 #include <span>
 
-namespace seil::detail {
+namespace abseil::detail {
 namespace {
 
 double dot(std::span<const double> left, std::span<const double> right)

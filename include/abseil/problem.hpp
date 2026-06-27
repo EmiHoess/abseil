@@ -1,7 +1,7 @@
 #pragma once
 
-#include <seil/error.hpp>
-#include <seil/geometry.hpp>
+#include <abseil/error.hpp>
+#include <abseil/geometry.hpp>
 
 #include <array>
 #include <cstddef>
@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace seil {
+namespace abseil {
 
 inline constexpr std::size_t tile_edge = 8;
 inline constexpr std::size_t tile_voxels = tile_edge * tile_edge * tile_edge;

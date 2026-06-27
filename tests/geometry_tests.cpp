@@ -1,4 +1,4 @@
-#include <seil/geometry.hpp>
+#include <abseil/geometry.hpp>
 
 #include <cmath>
 #include <limits>
@@ -15,7 +15,7 @@ bool close(double left, double right, double tolerance = 1.0e-12)
 
 int main()
 {
-  using namespace seil;
+  using namespace abseil;
 
   const matrix4 identity = identity_matrix4();
   if(!close(identity[0], 1.0) || !close(identity[5], 1.0) ||

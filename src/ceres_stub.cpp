@@ -1,6 +1,6 @@
 #include "internal.hpp"
 
-namespace seil::detail {
+namespace abseil::detail {
 
 bool ceres_backend_available() noexcept
 {

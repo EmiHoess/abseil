@@ -18,21 +18,21 @@ void require(bool condition, const char* message)
 
 int main()
 {
-  seil::problem graph;
+  abseil::problem graph;
   graph.nodes.push_back({1, {}, true});
   graph.nodes.push_back({2, {2.0, 0.0, 0.0, 0.0}, false});
   graph.nodes.push_back({3, {4.0, 0.0, 0.0, 0.0}, false});
   graph.relative_factors.push_back({0, 1, {1.0, 0.0, 0.0, 0.0}});
   graph.relative_factors.push_back({1, 2, {1.0, 0.0, 0.0, 0.0}});
-  auto prepared = seil::prepare(graph);
+  auto prepared = abseil::prepare(graph);
   require(prepared.has_value(), "sparse graph preparation");
-  const auto* storage = seil::detail::prepared_problem_access::get(*prepared);
+  const auto* storage = abseil::detail::prepared_problem_access::get(*prepared);
   const std::array poses{
     graph.nodes[0].initial,
     graph.nodes[1].initial,
     graph.nodes[2].initial
   };
-  auto system = seil::detail::build_sparse_system(*storage, poses);
+  auto system = abseil::detail::build_sparse_system(*storage, poses);
   require(system.has_value(), "sparse system construction");
   require(system->gradient.size() == 8, "sparse gradient dimension");
   require(system->blocks.size() == 3 && system->hessian.size() == 48,
@@ -41,9 +41,9 @@ int main()
     system->blocks[1].row == 0 && system->blocks[1].column == 1 &&
     system->blocks[2].row == 1 && system->blocks[2].column == 1,
     "deterministic block order");
-  require(seil::detail::sparse_slot(storage->topology, 0, 1) == 1 &&
-    seil::detail::sparse_slot(storage->topology, 1, 0) == 1 &&
-    seil::detail::sparse_slot(storage->topology, -1, 0) == -1,
+  require(abseil::detail::sparse_slot(storage->topology, 0, 1) == 1 &&
+    abseil::detail::sparse_slot(storage->topology, 1, 0) == 1 &&
+    abseil::detail::sparse_slot(storage->topology, -1, 0) == -1,
     "direct sparse slot lookup");
   require(system->cost.relative > 0.0, "sparse system cost");
   for(double value : system->hessian)

@@ -1,10 +1,10 @@
 #include "internal.hpp"
 
-#include <seil/field.hpp>
+#include <abseil/field.hpp>
 
 #include <cmath>
 
-namespace seil {
+namespace abseil {
 namespace {
 
 std::int32_t floor_divide(std::int32_t value, std::int32_t divisor) noexcept

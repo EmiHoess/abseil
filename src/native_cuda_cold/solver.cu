@@ -42,22 +42,22 @@ cudaError_t upload_array(
     cudaMemcpyHostToDevice);
 }
 
-std::vector<seil_cuda_field_tile> make_tsdf_views(
-  const seil_cuda_problem& problem,
-  const seil_cuda_tsdf_tile* device_tiles
+std::vector<abseil_cuda_field_tile> make_tsdf_views(
+  const abseil_cuda_problem& problem,
+  const abseil_cuda_tsdf_tile* device_tiles
 )
 {
-  std::vector<seil_cuda_field_tile> output;
+  std::vector<abseil_cuda_field_tile> output;
   output.reserve(problem.tsdf_tile_count + problem.resident_tsdf_count);
   for(std::size_t index = 0; index < problem.tsdf_tile_count; ++index) {
     const auto& tile = problem.tsdf_tiles[index];
     const auto* base = reinterpret_cast<const unsigned char*>(device_tiles) +
-      index * sizeof(seil_cuda_tsdf_tile) + offsetof(seil_cuda_tsdf_tile, voxels);
+      index * sizeof(abseil_cuda_tsdf_tile) + offsetof(abseil_cuda_tsdf_tile, voxels);
     output.push_back({tile.volume_index, tile.x, tile.y, tile.z,
-      base + offsetof(seil_cuda_tsdf_voxel, distance),
-      base + offsetof(seil_cuda_tsdf_voxel, weight),
-      base + offsetof(seil_cuda_tsdf_voxel, flags),
-      sizeof(seil_cuda_tsdf_voxel), 0U, 1.0F,
+      base + offsetof(abseil_cuda_tsdf_voxel, distance),
+      base + offsetof(abseil_cuda_tsdf_voxel, weight),
+      base + offsetof(abseil_cuda_tsdf_voxel, flags),
+      sizeof(abseil_cuda_tsdf_voxel), 0U, 1.0F,
       std::numeric_limits<float>::max()});
   }
   for(std::size_t index = 0; index < problem.resident_tsdf_count; ++index)
@@ -65,21 +65,21 @@ std::vector<seil_cuda_field_tile> make_tsdf_views(
   return output;
 }
 
-std::vector<seil_cuda_field_tile> make_esdf_views(
-  const seil_cuda_problem& problem,
-  const seil_cuda_esdf_tile* device_tiles
+std::vector<abseil_cuda_field_tile> make_esdf_views(
+  const abseil_cuda_problem& problem,
+  const abseil_cuda_esdf_tile* device_tiles
 )
 {
-  std::vector<seil_cuda_field_tile> output;
+  std::vector<abseil_cuda_field_tile> output;
   output.reserve(problem.esdf_tile_count + problem.resident_esdf_count);
   for(std::size_t index = 0; index < problem.esdf_tile_count; ++index) {
     const auto& tile = problem.esdf_tiles[index];
     const auto* base = reinterpret_cast<const unsigned char*>(device_tiles) +
-      index * sizeof(seil_cuda_esdf_tile) + offsetof(seil_cuda_esdf_tile, voxels);
+      index * sizeof(abseil_cuda_esdf_tile) + offsetof(abseil_cuda_esdf_tile, voxels);
     output.push_back({tile.volume_index, tile.x, tile.y, tile.z,
-      base + offsetof(seil_cuda_esdf_voxel, distance), nullptr,
-      base + offsetof(seil_cuda_esdf_voxel, flags),
-      sizeof(seil_cuda_esdf_voxel), 0U, 1.0F,
+      base + offsetof(abseil_cuda_esdf_voxel, distance), nullptr,
+      base + offsetof(abseil_cuda_esdf_voxel, flags),
+      sizeof(abseil_cuda_esdf_voxel), 0U, 1.0F,
       std::numeric_limits<float>::max()});
   }
   for(std::size_t index = 0; index < problem.resident_esdf_count; ++index)
@@ -87,13 +87,13 @@ std::vector<seil_cuda_field_tile> make_esdf_views(
   return output;
 }
 
-__device__ double robust_cost(seil_cuda_loss robust_loss, double residual)
+__device__ double robust_cost(abseil_cuda_loss robust_loss, double residual)
 {
   const double absolute = fabs(residual);
-  if(robust_loss.kind == seil_cuda_loss_huber)
+  if(robust_loss.kind == abseil_cuda_loss_huber)
     return absolute <= robust_loss.scale ? 0.5 * residual * residual :
       robust_loss.scale * (absolute - 0.5 * robust_loss.scale);
-  if(robust_loss.kind == seil_cuda_loss_cauchy) {
+  if(robust_loss.kind == abseil_cuda_loss_cauchy) {
     const double normalized = residual / robust_loss.scale;
     return 0.5 * robust_loss.scale * robust_loss.scale *
       log1p(normalized * normalized);
@@ -102,12 +102,12 @@ __device__ double robust_cost(seil_cuda_loss robust_loss, double residual)
 }
 
 __device__ double edge_cost(
-  const seil_cuda_node* nodes,
-  const seil_cuda_edge& edge
+  const abseil_cuda_node* nodes,
+  const abseil_cuda_edge& edge
 )
 {
-  const seil_cuda_pose4& left = nodes[edge.node_i].pose;
-  const seil_cuda_pose4& right = nodes[edge.node_j].pose;
+  const abseil_cuda_pose4& left = nodes[edge.node_i].pose;
+  const abseil_cuda_pose4& right = nodes[edge.node_j].pose;
   const double cosine = cos(left.yaw);
   const double sine = sin(left.yaw);
   const double dx = right.x - left.x;
@@ -138,20 +138,20 @@ struct registration_evaluation {
 };
 
 __device__ registration_evaluation evaluate_registration(
-  const seil_cuda_options& options,
-  const seil_cuda_node* nodes,
-  const seil_cuda_registration_group& group,
-  const seil_cuda_registration_sample& sample,
-  const seil_cuda_volume* volumes,
-  const seil_cuda_field_tile* tsdf_views,
+  const abseil_cuda_options& options,
+  const abseil_cuda_node* nodes,
+  const abseil_cuda_registration_group& group,
+  const abseil_cuda_registration_sample& sample,
+  const abseil_cuda_volume* volumes,
+  const abseil_cuda_field_tile* tsdf_views,
   size_t tsdf_view_count,
-  const seil_cuda_field_tile* esdf_views,
+  const abseil_cuda_field_tile* esdf_views,
   size_t esdf_view_count
 )
 {
   registration_evaluation output{};
-  const seil_cuda_pose4& reference = nodes[group.node_i].pose;
-  const seil_cuda_pose4& reading = nodes[group.node_j].pose;
+  const abseil_cuda_pose4& reference = nodes[group.node_i].pose;
+  const abseil_cuda_pose4& reading = nodes[group.node_j].pose;
   const double reference_cosine = cos(reference.yaw);
   const double reference_sine = sin(reference.yaw);
   const double rotated_x = reference_cosine * sample.reference_x -
@@ -165,16 +165,16 @@ __device__ registration_evaluation evaluate_registration(
   const double point_x = reading_cosine * world_x + reading_sine * world_y;
   const double point_y = -reading_sine * world_x + reading_cosine * world_y;
   const double point_z = reference.z + sample.reference_z - reading.z;
-  const seil_cuda_volume& volume = volumes[group.volume_j];
-  seil_cuda_field_query query{};
-  if(!seil_query_trilinear(group.field, group.volume_j, volume.voxel_size,
+  const abseil_cuda_volume& volume = volumes[group.volume_j];
+  abseil_cuda_field_query query{};
+  if(!abseil_query_trilinear(group.field, group.volume_j, volume.voxel_size,
     point_x, point_y, point_z, tsdf_views, tsdf_view_count,
     esdf_views, esdf_view_count,
     &query))
     return output;
-  seil_cuda_field_query confidence{};
+  abseil_cuda_field_query confidence{};
   if(options.registration_profile == 0 &&
-    !seil_query_trilinear(seil_cuda_field_tsdf, group.volume_j,
+    !abseil_query_trilinear(abseil_cuda_field_tsdf, group.volume_j,
       volume.voxel_size, point_x, point_y, point_z, tsdf_views, tsdf_view_count,
       esdf_views, esdf_view_count, &confidence))
     return output;
@@ -213,19 +213,19 @@ __device__ registration_evaluation evaluate_registration(
 }
 
 __global__ void evaluate_deterministic(
-  seil_cuda_options options,
-  const seil_cuda_node* nodes,
-  const seil_cuda_edge* relative_edges,
+  abseil_cuda_options options,
+  const abseil_cuda_node* nodes,
+  const abseil_cuda_edge* relative_edges,
   size_t relative_count,
-  const seil_cuda_edge* absolute_edges,
+  const abseil_cuda_edge* absolute_edges,
   size_t absolute_count,
-  const seil_cuda_registration_group* groups,
+  const abseil_cuda_registration_group* groups,
   size_t group_count,
-  const seil_cuda_registration_sample* samples,
-  const seil_cuda_volume* volumes,
-  const seil_cuda_field_tile* tsdf_views,
+  const abseil_cuda_registration_sample* samples,
+  const abseil_cuda_volume* volumes,
+  const abseil_cuda_field_tile* tsdf_views,
   size_t tsdf_view_count,
-  const seil_cuda_field_tile* esdf_views,
+  const abseil_cuda_field_tile* esdf_views,
   size_t esdf_view_count,
   double* costs,
   uint64_t* accepted_rows
@@ -242,7 +242,7 @@ __global__ void evaluate_deterministic(
   for(size_t index = 0; index < absolute_count; ++index)
     costs[1] += edge_cost(nodes, absolute_edges[index]);
   for(size_t group_index = 0; group_index < group_count; ++group_index) {
-    const seil_cuda_registration_group& group = groups[group_index];
+    const abseil_cuda_registration_group& group = groups[group_index];
     double total_confidence = 0.0;
     for(uint32_t local = 0; local < group.sample_count; ++local) {
       const auto row = evaluate_registration(options, nodes, group,
@@ -267,8 +267,8 @@ __global__ void evaluate_deterministic(
 }
 
 __global__ void evaluate_edges_atomic(
-  const seil_cuda_node* nodes,
-  const seil_cuda_edge* edges,
+  const abseil_cuda_node* nodes,
+  const abseil_cuda_edge* edges,
   size_t count,
   double* cost
 )
@@ -283,9 +283,9 @@ __device__ double wrap_yaw_device(double yaw)
   return atan2(sin(yaw), cos(yaw));
 }
 
-__device__ seil_cuda_pose4 compose_device(
-  const seil_cuda_pose4& left,
-  const seil_cuda_pose4& right
+__device__ abseil_cuda_pose4 compose_device(
+  const abseil_cuda_pose4& left,
+  const abseil_cuda_pose4& right
 )
 {
   const double cosine = cos(left.yaw);
@@ -298,7 +298,7 @@ __device__ seil_cuda_pose4 compose_device(
   };
 }
 
-__device__ seil_cuda_pose4 inverse_device(const seil_cuda_pose4& value)
+__device__ abseil_cuda_pose4 inverse_device(const abseil_cuda_pose4& value)
 {
   const double cosine = cos(value.yaw);
   const double sine = sin(value.yaw);
@@ -311,19 +311,19 @@ __device__ seil_cuda_pose4 inverse_device(const seil_cuda_pose4& value)
 }
 
 __device__ double relax_edge(
-  seil_cuda_node* nodes,
-  const seil_cuda_edge& edge,
+  abseil_cuda_node* nodes,
+  const abseil_cuda_edge& edge,
   double maximum_translation,
   double maximum_yaw
 )
 {
-  seil_cuda_node& left = nodes[edge.node_i];
-  seil_cuda_node& right = nodes[edge.node_j];
-  const seil_cuda_pose4 target_right = compose_device(left.pose, edge.measured);
-  const seil_cuda_pose4 target_left = compose_device(
+  abseil_cuda_node& left = nodes[edge.node_i];
+  abseil_cuda_node& right = nodes[edge.node_j];
+  const abseil_cuda_pose4 target_right = compose_device(left.pose, edge.measured);
+  const abseil_cuda_pose4 target_left = compose_device(
     right.pose, inverse_device(edge.measured));
-  seil_cuda_pose4* pose = nullptr;
-  seil_cuda_pose4 target{};
+  abseil_cuda_pose4* pose = nullptr;
+  abseil_cuda_pose4 target{};
   double fraction = 1.0;
   if(left.active_index < 0 && right.active_index >= 0) {
     pose = &right.pose;
@@ -358,11 +358,11 @@ __device__ double relax_edge(
 }
 
 __global__ void solve_sparse_system_serial(
-  seil_cuda_options options,
-  seil_cuda_node* nodes,
-  const seil_cuda_edge* relative_edges,
+  abseil_cuda_options options,
+  abseil_cuda_node* nodes,
+  const abseil_cuda_edge* relative_edges,
   size_t relative_count,
-  const seil_cuda_edge* absolute_edges,
+  const abseil_cuda_edge* absolute_edges,
   size_t absolute_count,
   uint32_t* completed_iterations,
   double* update_norm
@@ -389,27 +389,27 @@ __global__ void solve_sparse_system_serial(
 
 }
 
-struct seil_cuda_compact_state {
+struct abseil_cuda_compact_state {
   double costs[6];
   uint64_t accepted_rows;
   uint32_t completed_iterations;
   double update_norm;
 };
 
-struct seil_cuda_context {
-  seil_cuda_options options{};
-  seil_cuda_node* nodes{};
-  seil_cuda_edge* relative_edges{};
-  seil_cuda_edge* absolute_edges{};
-  seil_cuda_registration_group* registration_groups{};
-  seil_cuda_registration_sample* registration_samples{};
-  seil_cuda_volume* volumes{};
-  seil_cuda_tsdf_tile* tsdf_tiles{};
-  seil_cuda_esdf_tile* esdf_tiles{};
-  seil_cuda_field_tile* tsdf_views{};
-  seil_cuda_field_tile* esdf_views{};
-  seil_cuda_sparse_slot* sparse_slots{};
-  seil_cuda_compact_state* compact{};
+struct abseil_cuda_context {
+  abseil_cuda_options options{};
+  abseil_cuda_node* nodes{};
+  abseil_cuda_edge* relative_edges{};
+  abseil_cuda_edge* absolute_edges{};
+  abseil_cuda_registration_group* registration_groups{};
+  abseil_cuda_registration_sample* registration_samples{};
+  abseil_cuda_volume* volumes{};
+  abseil_cuda_tsdf_tile* tsdf_tiles{};
+  abseil_cuda_esdf_tile* esdf_tiles{};
+  abseil_cuda_field_tile* tsdf_views{};
+  abseil_cuda_field_tile* esdf_views{};
+  abseil_cuda_sparse_slot* sparse_slots{};
+  abseil_cuda_compact_state* compact{};
   int32_t active_node_count{};
   std::size_t node_count{};
   std::size_t relative_edge_count{};
@@ -423,21 +423,21 @@ struct seil_cuda_context {
   std::size_t esdf_view_count{};
   std::size_t sparse_slot_count{};
   std::uint64_t uploaded_bytes{};
-  seil_cuda_iteration iteration{};
+  abseil_cuda_iteration iteration{};
   bool solved{};
 };
 
-extern "C" int seil_cuda_abi_version(void)
+extern "C" int abseil_cuda_abi_version(void)
 {
-  return seil_cuda_abi_version_value;
+  return abseil_cuda_abi_version_value;
 }
 
-extern "C" const char* seil_cuda_last_error(void)
+extern "C" const char* abseil_cuda_last_error(void)
 {
   return last_error.c_str();
 }
 
-extern "C" int seil_cuda_device_count(int32_t* output_count)
+extern "C" int abseil_cuda_device_count(int32_t* output_count)
 {
   if(output_count == nullptr)
     return fail(3, "device count output is null");
@@ -449,21 +449,21 @@ extern "C" int seil_cuda_device_count(int32_t* output_count)
   return 0;
 }
 
-extern "C" int seil_cuda_create(
-  const seil_cuda_options* options,
-  seil_cuda_context** output_context
+extern "C" int abseil_cuda_create(
+  const abseil_cuda_options* options,
+  abseil_cuda_context** output_context
 )
 {
   if(options == nullptr || output_context == nullptr)
     return fail(3, "CUDA create argument is null");
   *output_context = nullptr;
-  if(options->abi_version != seil_cuda_abi_version_value ||
-    options->struct_size != sizeof(seil_cuda_options))
+  if(options->abi_version != abseil_cuda_abi_version_value ||
+    options->struct_size != sizeof(abseil_cuda_options))
     return fail(2, "CUDA options ABI does not match");
   cudaError_t status = cudaSetDevice(options->device_index);
   if(status != cudaSuccess)
     return cuda_fail(status);
-  auto* context = new (std::nothrow) seil_cuda_context;
+  auto* context = new (std::nothrow) abseil_cuda_context;
   if(context == nullptr)
     return fail(4, "CUDA context allocation failed");
   context->options = *options;
@@ -471,30 +471,30 @@ extern "C" int seil_cuda_create(
   return 0;
 }
 
-extern "C" int seil_cuda_upload_problem(
-  seil_cuda_context* context,
-  const seil_cuda_problem* problem
+extern "C" int abseil_cuda_upload_problem(
+  abseil_cuda_context* context,
+  const abseil_cuda_problem* problem
 )
 {
   if(context == nullptr || problem == nullptr)
     return fail(3, "CUDA upload argument is null");
-  if(problem->abi_version != seil_cuda_abi_version_value ||
-    problem->struct_size != sizeof(seil_cuda_problem))
+  if(problem->abi_version != abseil_cuda_abi_version_value ||
+    problem->struct_size != sizeof(abseil_cuda_problem))
     return fail(2, "CUDA problem ABI does not match");
   const std::uint64_t requested =
-    problem->node_count * sizeof(seil_cuda_node) +
-    problem->relative_edge_count * sizeof(seil_cuda_edge) +
-    problem->absolute_edge_count * sizeof(seil_cuda_edge) +
-    problem->registration_group_count * sizeof(seil_cuda_registration_group) +
-    problem->registration_sample_count * sizeof(seil_cuda_registration_sample) +
-    problem->volume_count * sizeof(seil_cuda_volume) +
-    problem->tsdf_tile_count * sizeof(seil_cuda_tsdf_tile) +
-    problem->esdf_tile_count * sizeof(seil_cuda_esdf_tile) +
+    problem->node_count * sizeof(abseil_cuda_node) +
+    problem->relative_edge_count * sizeof(abseil_cuda_edge) +
+    problem->absolute_edge_count * sizeof(abseil_cuda_edge) +
+    problem->registration_group_count * sizeof(abseil_cuda_registration_group) +
+    problem->registration_sample_count * sizeof(abseil_cuda_registration_sample) +
+    problem->volume_count * sizeof(abseil_cuda_volume) +
+    problem->tsdf_tile_count * sizeof(abseil_cuda_tsdf_tile) +
+    problem->esdf_tile_count * sizeof(abseil_cuda_esdf_tile) +
     (problem->tsdf_tile_count + problem->resident_tsdf_count) *
-      sizeof(seil_cuda_field_tile) +
+      sizeof(abseil_cuda_field_tile) +
     (problem->esdf_tile_count + problem->resident_esdf_count) *
-      sizeof(seil_cuda_field_tile) +
-    problem->sparse_slot_count * sizeof(seil_cuda_sparse_slot);
+      sizeof(abseil_cuda_field_tile) +
+    problem->sparse_slot_count * sizeof(abseil_cuda_sparse_slot);
   if(context->options.memory_budget_bytes != 0 &&
     requested > context->options.memory_budget_bytes)
     return fail(4, "CUDA memory budget is insufficient");
@@ -522,8 +522,8 @@ extern "C" int seil_cuda_upload_problem(
   if(status == cudaSuccess)
     status = upload_array(problem->esdf_tiles, problem->esdf_tile_count,
       &context->esdf_tiles);
-  std::vector<seil_cuda_field_tile> tsdf_views;
-  std::vector<seil_cuda_field_tile> esdf_views;
+  std::vector<abseil_cuda_field_tile> tsdf_views;
+  std::vector<abseil_cuda_field_tile> esdf_views;
   if(status == cudaSuccess) {
     tsdf_views = make_tsdf_views(*problem, context->tsdf_tiles);
     esdf_views = make_esdf_views(*problem, context->esdf_tiles);
@@ -539,7 +539,7 @@ extern "C" int seil_cuda_upload_problem(
       &context->sparse_slots);
   if(status == cudaSuccess)
     status = cudaMalloc(reinterpret_cast<void**>(&context->compact),
-      sizeof(seil_cuda_compact_state));
+      sizeof(abseil_cuda_compact_state));
   if(status != cudaSuccess)
     return cuda_fail(status);
   context->node_count = problem->node_count;
@@ -558,29 +558,29 @@ extern "C" int seil_cuda_upload_problem(
   return 0;
 }
 
-extern "C" int seil_cuda_solve_stage(
-  seil_cuda_context* context,
-  seil_cuda_summary* output_summary
+extern "C" int abseil_cuda_solve_stage(
+  abseil_cuda_context* context,
+  abseil_cuda_summary* output_summary
 )
 {
   if(context == nullptr || output_summary == nullptr)
     return fail(3, "CUDA solve argument is null");
   *output_summary = {};
   cudaError_t status = cudaMemset(context->compact, 0,
-    sizeof(seil_cuda_compact_state));
+    sizeof(abseil_cuda_compact_state));
   if(status != cudaSuccess)
     return cuda_fail(status);
   auto* compact_bytes = reinterpret_cast<unsigned char*>(context->compact);
   auto* initial_costs = reinterpret_cast<double*>(compact_bytes);
   auto* final_costs = initial_costs + 3;
   auto* accepted_rows = reinterpret_cast<uint64_t*>(
-    compact_bytes + offsetof(seil_cuda_compact_state, accepted_rows));
+    compact_bytes + offsetof(abseil_cuda_compact_state, accepted_rows));
   auto* completed_iterations = reinterpret_cast<uint32_t*>(
-    compact_bytes + offsetof(seil_cuda_compact_state, completed_iterations));
+    compact_bytes + offsetof(abseil_cuda_compact_state, completed_iterations));
   auto* update_norm = reinterpret_cast<double*>(
-    compact_bytes + offsetof(seil_cuda_compact_state, update_norm));
+    compact_bytes + offsetof(abseil_cuda_compact_state, update_norm));
   const auto launch_evaluation = [&](double* costs) {
-    if(context->options.reduction_policy == seil_cuda_reduction_atomic_fast) {
+    if(context->options.reduction_policy == abseil_cuda_reduction_atomic_fast) {
       constexpr unsigned threads = 128;
       if(context->relative_edge_count != 0)
         evaluate_edges_atomic<<<
@@ -617,7 +617,7 @@ extern "C" int seil_cuda_solve_stage(
   if(status != cudaSuccess)
     return cuda_fail(status);
   launch_evaluation(final_costs);
-  seil_cuda_compact_state compact{};
+  abseil_cuda_compact_state compact{};
   status = cudaMemcpy(&compact, context->compact, sizeof(compact),
     cudaMemcpyDeviceToHost);
   if(status != cudaSuccess)
@@ -630,7 +630,7 @@ extern "C" int seil_cuda_solve_stage(
   output_summary->final_registration_cost = compact.costs[5];
   output_summary->registration_rows = static_cast<uint32_t>(compact.accepted_rows);
   output_summary->termination = context->active_node_count == 0 ?
-    seil_cuda_no_free_nodes : seil_cuda_converged_update;
+    abseil_cuda_no_free_nodes : abseil_cuda_converged_update;
   output_summary->solution_usable = 1;
   output_summary->successful_steps = compact.completed_iterations == 0 ? 0 : 1;
   context->iteration = {
@@ -649,17 +649,17 @@ extern "C" int seil_cuda_solve_stage(
   };
   context->solved = true;
   output_summary->requested_device_bytes = context->uploaded_bytes +
-    sizeof(seil_cuda_compact_state);
+    sizeof(abseil_cuda_compact_state);
   output_summary->peak_device_bytes = output_summary->requested_device_bytes;
   output_summary->host_to_device_bytes = context->uploaded_bytes;
-  output_summary->device_to_host_bytes = sizeof(seil_cuda_compact_state);
+  output_summary->device_to_host_bytes = sizeof(abseil_cuda_compact_state);
   output_summary->synchronization_count = 1;
   return 0;
 }
 
-extern "C" int seil_cuda_download_poses(
-  seil_cuda_context* context,
-  seil_cuda_pose4* output,
+extern "C" int abseil_cuda_download_poses(
+  abseil_cuda_context* context,
+  abseil_cuda_pose4* output,
   size_t capacity,
   size_t* output_count
 )
@@ -671,11 +671,11 @@ extern "C" int seil_cuda_download_poses(
     return 0;
   if(capacity < context->node_count)
     return fail(3, "CUDA pose download capacity is insufficient");
-  auto* nodes = new (std::nothrow) seil_cuda_node[context->node_count];
+  auto* nodes = new (std::nothrow) abseil_cuda_node[context->node_count];
   if(nodes == nullptr)
     return fail(4, "CUDA pose staging allocation failed");
   const cudaError_t status = cudaMemcpy(nodes, context->nodes,
-    context->node_count * sizeof(seil_cuda_node), cudaMemcpyDeviceToHost);
+    context->node_count * sizeof(abseil_cuda_node), cudaMemcpyDeviceToHost);
   if(status == cudaSuccess)
     for(size_t index = 0; index < context->node_count; ++index)
       output[index] = nodes[index].pose;
@@ -683,9 +683,9 @@ extern "C" int seil_cuda_download_poses(
   return status == cudaSuccess ? 0 : cuda_fail(status);
 }
 
-extern "C" int seil_cuda_download_iterations(
-  seil_cuda_context* context,
-  seil_cuda_iteration* output,
+extern "C" int abseil_cuda_download_iterations(
+  abseil_cuda_context* context,
+  abseil_cuda_iteration* output,
   size_t capacity,
   size_t* output_count
 )
@@ -701,7 +701,7 @@ extern "C" int seil_cuda_download_iterations(
   return 0;
 }
 
-extern "C" int seil_cuda_destroy(seil_cuda_context* context)
+extern "C" int abseil_cuda_destroy(abseil_cuda_context* context)
 {
   if(context == nullptr)
     return 0;

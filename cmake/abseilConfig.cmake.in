@@ -1,0 +1,17 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+set(abseil_with_ceres "@abseil_enable_ceres@")
+set(abseil_with_cuda "@abseil_enable_cuda@")
+
+if(abseil_with_ceres)
+  find_dependency(Ceres CONFIG REQUIRED)
+endif()
+
+if(abseil_with_cuda)
+  find_dependency(CUDAToolkit REQUIRED)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/abseilTargets.cmake")
+check_required_components(abseil)

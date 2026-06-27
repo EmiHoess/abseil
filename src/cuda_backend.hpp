@@ -2,13 +2,13 @@
 
 #include "native_cuda_cold/cuda_abi.h"
 
-#include <seil/problem.hpp>
+#include <abseil/problem.hpp>
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace seil::detail {
+namespace abseil::detail {
 
 enum class cuda_stage_status : std::int32_t {
   success,
@@ -31,7 +31,7 @@ struct cuda_call_result {
   }
 };
 
-constexpr std::uint32_t cuda_abi_version = seil_cuda_abi_version_value;
+constexpr std::uint32_t cuda_abi_version = abseil_cuda_abi_version_value;
 
 struct cuda_packing {
   static operation_result<std::int32_t> index(std::size_t value);
@@ -44,18 +44,18 @@ struct cuda_packing {
 };
 
 struct packed_cuda_problem {
-  std::vector<seil_cuda_node> nodes;
-  std::vector<seil_cuda_edge> relative_edges;
-  std::vector<seil_cuda_edge> absolute_edges;
-  std::vector<seil_cuda_registration_group> registration_groups;
-  std::vector<seil_cuda_registration_sample> registration_samples;
-  std::vector<seil_cuda_volume> volumes;
-  std::vector<seil_cuda_tsdf_tile> tsdf_tiles;
-  std::vector<seil_cuda_esdf_tile> esdf_tiles;
-  std::vector<seil_cuda_field_tile> resident_tsdf;
-  std::vector<seil_cuda_field_tile> resident_esdf;
-  std::vector<seil_cuda_sparse_slot> sparse_slots;
-  seil_cuda_problem view{};
+  std::vector<abseil_cuda_node> nodes;
+  std::vector<abseil_cuda_edge> relative_edges;
+  std::vector<abseil_cuda_edge> absolute_edges;
+  std::vector<abseil_cuda_registration_group> registration_groups;
+  std::vector<abseil_cuda_registration_sample> registration_samples;
+  std::vector<abseil_cuda_volume> volumes;
+  std::vector<abseil_cuda_tsdf_tile> tsdf_tiles;
+  std::vector<abseil_cuda_esdf_tile> esdf_tiles;
+  std::vector<abseil_cuda_field_tile> resident_tsdf;
+  std::vector<abseil_cuda_field_tile> resident_esdf;
+  std::vector<abseil_cuda_sparse_slot> sparse_slots;
+  abseil_cuda_problem view{};
   std::uint64_t byte_count{};
 };
 

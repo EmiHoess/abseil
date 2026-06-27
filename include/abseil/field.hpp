@@ -1,11 +1,11 @@
 #pragma once
 
-#include <seil/problem.hpp>
+#include <abseil/problem.hpp>
 
 #include <cstddef>
 #include <cstdint>
 
-namespace seil {
+namespace abseil {
 
 enum class field_interpolation : std::uint32_t {
   nearest,

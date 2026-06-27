@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-namespace seil {
+namespace abseil {
 
 enum class operation_code {
   invalid_argument,

@@ -13,9 +13,9 @@ void require(bool condition, const char* message)
   }
 }
 
-seil::problem chain(bool anchored)
+abseil::problem chain(bool anchored)
 {
-  seil::problem graph;
+  abseil::problem graph;
   graph.nodes.push_back({1, {}, anchored});
   graph.nodes.push_back({2, {2.0, 0.0, 0.0, 0.0}, false});
   graph.relative_factors.push_back({0, 1, {1.0, 0.0, 0.0, 0.0}});
@@ -27,33 +27,33 @@ seil::problem chain(bool anchored)
 int main()
 {
   auto graph = chain(true);
-  auto prepared = seil::prepare(graph);
+  auto prepared = abseil::prepare(graph);
   require(prepared.has_value(), "linear graph preparation");
-  const auto* storage = seil::detail::prepared_problem_access::get(*prepared);
+  const auto* storage = abseil::detail::prepared_problem_access::get(*prepared);
   const std::array poses{graph.nodes[0].initial, graph.nodes[1].initial};
-  auto system = seil::detail::build_sparse_system(*storage, poses);
+  auto system = abseil::detail::build_sparse_system(*storage, poses);
   require(system.has_value(), "linear system construction");
-  seil::detail::linear_workspace workspace;
-  auto solution = seil::detail::solve_sparse_system(
+  abseil::detail::linear_workspace workspace;
+  auto solution = abseil::detail::solve_sparse_system(
     storage->topology, *system, 1.0e-3, {}, workspace);
   require(solution.converged && solution.update.size() == 4,
     "pcg converges");
   require(solution.update[0] < 0.0, "pcg correction direction");
   const auto residual_capacity = workspace.residual.capacity();
-  solution = seil::detail::solve_sparse_system(
+  solution = abseil::detail::solve_sparse_system(
     storage->topology, *system, 1.0e-2, {}, workspace);
   require(solution.converged && workspace.residual.capacity() == residual_capacity,
     "linear workspace reused");
 
   graph = chain(false);
-  prepared = seil::prepare(graph);
+  prepared = abseil::prepare(graph);
   require(prepared.has_value(), "unanchored graph preparation");
-  storage = seil::detail::prepared_problem_access::get(*prepared);
+  storage = abseil::detail::prepared_problem_access::get(*prepared);
   const std::array free_poses{graph.nodes[0].initial, graph.nodes[1].initial};
-  system = seil::detail::build_sparse_system(*storage, free_poses);
+  system = abseil::detail::build_sparse_system(*storage, free_poses);
   require(system.has_value(), "unanchored system construction");
-  solution = seil::detail::solve_sparse_system(storage->topology, *system,
+  solution = abseil::detail::solve_sparse_system(storage->topology, *system,
     1.0e-3, {}, workspace);
-  require(!solution.converged && solution.stop == seil::termination::singular_graph,
+  require(!solution.converged && solution.stop == abseil::termination::singular_graph,
     "unanchored graph rejected");
 }

@@ -6,7 +6,7 @@
 #include <chrono>
 #include <cmath>
 
-namespace seil::detail {
+namespace abseil::detail {
 namespace {
 
 operation_error option_error(std::string message)
@@ -99,7 +99,7 @@ void finish_telemetry(
 )
 {
   result.telemetry.total_ms = milliseconds(std::chrono::steady_clock::now() - started);
-  result.telemetry.implementation = "seil_native_cpu";
+  result.telemetry.implementation = "abseil_native_cpu";
   result.telemetry.device = "host";
 }
 
